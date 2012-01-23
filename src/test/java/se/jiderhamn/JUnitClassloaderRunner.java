@@ -10,6 +10,7 @@ import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
 import org.junit.runners.model.TestClass;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 /**
@@ -37,9 +38,13 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     
     private final Method originalMethod;
     
+    private final boolean expectedLeak; 
+    
     private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target) {
       super(testMethod, target);
       originalMethod = testMethod.getMethod();
+      final Leaks annotation = testMethod.getAnnotation(Leaks.class);
+      expectedLeak = (annotation == null || annotation.value()); // Default to true
     }
 
     @Override
@@ -93,7 +98,10 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         }
         */
 
-        assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
+        if(expectedLeak)
+          assertNotNull("ClassLoader been garbage collected, while test is expected to leak " + weak.get(), weak.get());
+        else
+          assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
       }
     }
   }
