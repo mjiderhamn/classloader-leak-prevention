@@ -18,12 +18,6 @@ import static org.junit.Assert.assertNull;
  */
 public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
   
-  /** No of times to run Garbage Collector for trying to get rid of the class loader. Value is not scientific... */
-  private final static int GC_RUNS = 10;
-  
-  /** No of milliseconds to wait between each Garbage Collection invocation. Value is not scientific... */
-  private final static long TIME_BETWEEN_GC = 2000;
-  
   public JUnitClassloaderRunner(Class<?> klass) throws InitializationError {
     super(klass);
     // TODO: Replace testclass here to support @Before, @After - alt throw exception if used
@@ -31,20 +25,35 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
   @Override
   protected Statement methodInvoker(FrameworkMethod method, Object test) {
-    return new SeparateClassLoaderInvokeMethod(method, test);
+    final LeakPreventor leakPreventorAnn = method.getMethod().getDeclaringClass().getAnnotation(LeakPreventor.class);
+    Class<? extends Runnable> preventorClass = (leakPreventorAnn != null) ? leakPreventorAnn.value() : null;
+
+    return new SeparateClassLoaderInvokeMethod(method, test, preventorClass);
   }
   
   private static class SeparateClassLoaderInvokeMethod extends InvokeMethod {
     
+    /** The method to run for triggering potential leak, or verify non-leak */
     private final Method originalMethod;
+
+    /** Is the test method expeced to leak? */
+    private final boolean expectedLeak;
     
-    private final boolean expectedLeak; 
+    /** Class that can be used to remove the leak */
+    private Class<? extends Runnable> preventorClass;
     
     private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target) {
+      this(testMethod, target, null);
+    }
+    
+    private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target, Class<? extends Runnable> preventorClass) {
       super(testMethod, target);
       originalMethod = testMethod.getMethod();
-      final Leaks annotation = testMethod.getAnnotation(Leaks.class);
-      expectedLeak = (annotation == null || annotation.value()); // Default to true
+
+      final Leaks leakAnn = testMethod.getAnnotation(Leaks.class);
+      this.expectedLeak = (leakAnn == null || leakAnn.value()); // Default to true
+
+      this.preventorClass = preventorClass;
     }
 
     @Override
@@ -86,20 +95,35 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
         System.gc(); // Force Garbage Collector to run
 
-        /*
-        for(int i = 0; i < GC_RUNS; i++) {
-          System.out.println("Running GC"); // TODO turn debugging on/off
-          System.gc();
-          if(weak.get() == null) // Garbage collected!
-            break;
-          Thread.sleep(TIME_BETWEEN_GC);
-          if(weak.get() == null) // Garbage collected!
-            break;
-        }
-        */
+        if(expectedLeak) { // We expect this test to leak classloaders
+          RedefiningClassLoader redefiningClassLoader = weak.get();
+          assertNotNull("ClassLoader been garbage collected, while test is expected to leak " + weak.get(), redefiningClassLoader);
 
-        if(expectedLeak)
-          assertNotNull("ClassLoader been garbage collected, while test is expected to leak " + weak.get(), weak.get());
+          if(redefiningClassLoader != null && // Always true, otherwise assertion failure above
+             preventorClass != null) {
+            try {
+              Class<? extends Runnable> preventorInLeakedLoader = (Class<Runnable>) redefiningClassLoader.loadClass(preventorClass.getName());
+              Runnable leakPreventor = preventorInLeakedLoader.newInstance();
+
+              leakPreventor.run(); // Try to prevent leak
+              
+              // Make available for Garbage Collection
+              leakPreventor = null;
+              preventorInLeakedLoader = null;
+              redefiningClassLoader = null;
+              
+              System.gc();
+              
+              assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
+                  "despite running the leak preventor " + leakPreventor, weak.get());
+            }
+            catch (Exception e) {
+              throw new RuntimeException("Leak prevention class" + preventorClass + " could not be instantiated!", e);
+            }
+
+          }
+
+        }
         else
           assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
       }
