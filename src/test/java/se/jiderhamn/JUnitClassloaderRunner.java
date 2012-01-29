@@ -18,6 +18,9 @@ import static org.junit.Assert.assertNull;
  */
 public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
   
+  /** Number of seconds to halt to allow for heap dump aquirement, if that option is enabled */
+  private static final int HALT_TIME_S = 10;
+
   public JUnitClassloaderRunner(Class<?> klass) throws InitializationError {
     super(klass);
     // TODO: Replace testclass here to support @Before, @After - alt throw exception if used
@@ -39,6 +42,15 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     /** Is the test method expeced to leak? */
     private final boolean expectedLeak;
     
+    /** 
+     * Should the thread pause for a couple of seconds before throwing the test failed error?
+     * Set this to true to allow some time to aquire a heap dump to track down leaks.
+     */
+    private final boolean haltBeforeError;
+    
+    /** How many times should Garbage Collection be run before testing if there was a leak? */
+    private final int gcCount;
+
     /** Class that can be used to remove the leak */
     private Class<? extends Runnable> preventorClass;
     
@@ -52,6 +64,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
       final Leaks leakAnn = testMethod.getAnnotation(Leaks.class);
       this.expectedLeak = (leakAnn == null || leakAnn.value()); // Default to true
+      this.haltBeforeError = (leakAnn != null && leakAnn.haltBeforeError()); // Default to false
+      this.gcCount = (leakAnn == null) ? 1 : leakAnn.gcCount(); // Default to 1
 
       this.preventorClass = preventorClass;
     }
@@ -61,7 +75,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       final Class<?> junitClass = originalMethod.getDeclaringClass();
       final ClassLoader clBefore = Thread.currentThread().getContextClassLoader();
 
-      RedefiningClassLoader myClassLoader = new RedefiningClassLoader(clBefore);
+      final String testName = originalMethod.getDeclaringClass().getName() + '.' + originalMethod.getName();
+      RedefiningClassLoader myClassLoader = new RedefiningClassLoader(clBefore, testName);
       
       try {
         Thread.currentThread().setContextClassLoader(myClassLoader);
@@ -92,18 +107,21 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         final WeakReference<RedefiningClassLoader> weak = new WeakReference<RedefiningClassLoader>(myClassLoader);
         myClassLoader.markAsZombie();
         myClassLoader = null; // Make available to garbage collector
-
-        System.gc(); // Force Garbage Collector to run
+        
+        for(int i = 0; i < gcCount; i++)
+          System.gc(); // Force Garbage Collector to run
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
-          assertNotNull("ClassLoader been garbage collected, while test is expected to leak " + weak.get(), redefiningClassLoader);
+          assertNotNull("ClassLoader has been garbage collected, while test is expected to leak " + weak.get(), redefiningClassLoader);
 
           if(redefiningClassLoader != null && // Always true, otherwise assertion failure above
              preventorClass != null) {
             try {
+              Thread.currentThread().setContextClassLoader(redefiningClassLoader);
               Class<? extends Runnable> preventorInLeakedLoader = (Class<Runnable>) redefiningClassLoader.loadClass(preventorClass.getName());
               Runnable leakPreventor = preventorInLeakedLoader.newInstance();
+              final String leakPreventorName = leakPreventor.toString();
 
               leakPreventor.run(); // Try to prevent leak
               
@@ -111,22 +129,43 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
               leakPreventor = null;
               preventorInLeakedLoader = null;
               redefiningClassLoader = null;
+              Thread.currentThread().setContextClassLoader(clBefore);
               
-              System.gc();
+              for(int i = 0; i < gcCount; i++)
+                System.gc();
+              
+              if(haltBeforeError && weak.get() != null) {
+                waitForHeapDump();
+              }
               
               assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
-                  "despite running the leak preventor " + leakPreventor, weak.get());
+                  "despite running the leak preventor " + leakPreventorName, weak.get());
             }
             catch (Exception e) {
-              throw new RuntimeException("Leak prevention class" + preventorClass + " could not be instantiated!", e);
+              throw new RuntimeException("Leak prevention class" + preventorClass + " could not be used!", e);
+            }
+            finally {
+              redefiningClassLoader = null;
+              Thread.currentThread().setContextClassLoader(clBefore); // Make sure it is reset, even if there is an error
             }
 
           }
 
         }
-        else
+        else {
+          if(haltBeforeError && weak.get() != null) {
+            waitForHeapDump();
+          }
+
           assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
+        }
       }
+    }
+
+    private static void waitForHeapDump() throws InterruptedException {
+      System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump aquirement");
+      // TODO: Inform about ZombieMarker
+      Thread.sleep(HALT_TIME_S * 1000);
     }
   }
 

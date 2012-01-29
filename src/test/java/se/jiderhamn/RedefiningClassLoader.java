@@ -13,14 +13,26 @@ class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   /** Set to non-null to indicate it should be ready for garbage collection */
   @SuppressWarnings({"FieldCanBeLocal", "UnusedDeclaration"})
   private ZombieMarker zombieMarker = null;
+  
+  private final String name;
       
 
   RedefiningClassLoader(ClassLoader parent) {
-    super(parent, DEFAULT_IGNORED_PACKAGES);
+    this(parent, null);
   }
 
   RedefiningClassLoader() {
+    this((String) null);
+  }
+
+  RedefiningClassLoader(ClassLoader parent, String name) {
+    super(parent, DEFAULT_IGNORED_PACKAGES);
+    this.name = name;
+  }
+
+  RedefiningClassLoader(String name) {
     super(DEFAULT_IGNORED_PACKAGES);
+    this.name = name;
   }
 
   @Override
@@ -33,8 +45,17 @@ class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   public void markAsZombie() {
     this.zombieMarker = new ZombieMarker();
   }
-  
-  // TODO: Add finalizer that reports garbage collection
 
-  // TODO: Add name
+  @Override
+  protected void finalize() throws Throwable {
+    System.out.println(this + " is being finalized");
+    
+    // TODO: Report?
+  }
+
+  @Override
+  public String toString() {
+    return (name != null) ? (this.getClass().getName() + '[' + name + ']') :  
+        super.toString();
+  }
 }
