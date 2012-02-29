@@ -1,3 +1,4 @@
+// TODO: License
 package se.jiderhamn.classloader.leak.prevention;
 
 import java.io.IOException;
@@ -17,9 +18,25 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Implement javax.servlet.Filter
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
+  /** Known offending (uncleared) ThreadLocals */
   private ThreadLocal[] offendingThreadLocals;
+  
+  /**
+   * When filter is set to debug mode, it will look for uncleared ThreadLocals when processing each request and
+   * if found, will print them using warning level.
+   */
+  protected boolean filterDebugMode = false; 
+
+  /**
+   * When filter is set to paranoid mode, it will look for uncleared ThreadLocals when processing each request and
+   * if found, will clear them.
+   */
+  protected boolean filterParanoidMode = false; 
 
   public void init(FilterConfig filterConfig) throws ServletException {
+    filterDebugMode = "true".equals(filterConfig.getInitParameter("debug"));
+    filterParanoidMode = "true".equals(filterConfig.getInitParameter("paranoid"));
+    
     List<ThreadLocal> threadLocals = new ArrayList<ThreadLocal>();
     Object axisDocumentBuilder = getStaticFieldValue("org.apache.axis.utils.XMLUtils", "documentBuilder");
     if(axisDocumentBuilder instanceof ThreadLocal) {
@@ -35,9 +52,42 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       filterChain.doFilter(servletRequest, servletResponse);
     }
     finally {
-      // Clean up ThreadLocals
+      // Clean up known offender ThreadLocals
       for(ThreadLocal offendingThreadLocal : offendingThreadLocals) {
         offendingThreadLocal.remove(); // Remove offender from current thread
+      }
+      
+      if(filterDebugMode || filterParanoidMode) {
+        forEachThreadLocalInCurrentThread(new ThreadLocalProcessor() {
+          public void process(ThreadLocal<?> threadLocal, Object value) {
+            final boolean customThreadLocal = isLoadedInWebApplication(threadLocal);
+            final boolean valueLoadedInWebApp = isLoadedInWebApplication(value);
+            if(customThreadLocal || valueLoadedInWebApp) {
+              // This ThreadLocal is either itself loaded by the web app classloader, or it's value is
+              // Let's do something about it
+              
+              StringBuilder message = new StringBuilder();
+              if(customThreadLocal) {
+                message.append("custom ");
+              }
+              message.append("ThreadLocal of type ").append(threadLocal.getClass()).append(": ").append(threadLocal)
+                     .append(" with value ").append(value);
+              if(value != null) {
+                message.append(" of type ").append(value.getClass());
+                if(valueLoadedInWebApp)
+                  message.append(" that is loaded by web app");
+              }
+              
+              if(filterParanoidMode) {
+                threadLocal.remove();
+                info("Removed " + message);
+              }
+              else if(filterDebugMode) {
+                warn("Found " + message);
+              }
+            }
+          }
+        });
       }
     }
   }
@@ -52,11 +102,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public void contextInitialized(ServletContextEvent servletContextEvent) {
-    // TODO
+    // TODO: Initialize known JRE problems
   }
 
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
-    // TODO
+    // TODO: More known leaks
+    
+    // TODO: Generic leaks like shutdown hooks and JDBC drivers (JCE providers?)
     
     // Fix known leaks
     fixBeanValidationApiLeak();
@@ -85,12 +137,31 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  private static Object getStaticFieldValue(String className, String fieldName) {
+  /** Test if provided object is loaded with web application classloader */ // TODO: Create test
+  protected boolean isLoadedInWebApplication(Object o) {
+    if(o == null)
+      return false;
+
+    final ClassLoader webAppCL = this.getClass().getClassLoader();
+    // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
+    
+    ClassLoader cl = o.getClass().getClassLoader();
+    while(cl != null) {
+      if(cl == webAppCL)
+        return true;
+      
+      cl = cl.getParent();
+    }
+    
+    return false;
+  }
+  
+  protected static Object getStaticFieldValue(String className, String fieldName) {
     Field staticField = findFieldOfClass(className, fieldName);
     return (staticField != null) ? getStaticFieldValue(staticField) : null;
   }
   
-  private static Field findFieldOfClass(String className, String fieldName) {
+  protected static Field findFieldOfClass(String className, String fieldName) {
     Class clazz = findClass(className);
     if(clazz != null) {
       return findField(clazz, fieldName);
@@ -99,7 +170,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       return null;
   }
   
-  private static Class findClass(String className) {
+  protected static Class findClass(String className) {
     try {
       return Class.forName(className);
     }
@@ -118,7 +189,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  private static Field findField(Class clazz, String fieldName) {
+  protected static Field findField(Class clazz, String fieldName) {
     if(clazz == null)
       return null;
 
@@ -137,7 +208,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  private static Object getStaticFieldValue(Field field) {
+  protected static Object getStaticFieldValue(Field field) {
     try {
       return field.get(null);
     }
@@ -147,4 +218,42 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       return null;
     }
   }
+  
+  /**
+   * Loop ThreadLocals and inheritable ThreadLocals in current Thread
+   * and for each found, invoke the callback interface
+   * TODO: Create test case
+   */
+  protected void forEachThreadLocalInCurrentThread(ThreadLocalProcessor threadLocalProcessor) {
+    // TODO: Implement
+  }
+  
+  protected interface ThreadLocalProcessor {
+    void process(ThreadLocal<?> threadLocal, Object value);
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Log methods TODO: Use
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  /*
+   * Since logging frameworks are part of the problem, we don't want to depend on any of them here.
+   * Feel free however to subclass or fork and use a log framework, in case you think you know what you're doing.
+   */
+  
+  protected void debug(String s) {
+    System.out.println(s);
+  } 
+
+  protected void info(String s) {
+    System.out.println(s);
+  } 
+
+  protected void warn(String s) {
+    System.err.println(s);
+  } 
+
+  protected void error(String s) {
+    System.err.println(s);
+  } 
 }
