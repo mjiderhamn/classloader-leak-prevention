@@ -240,8 +240,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     stopThreads();
     
-    // TODO: Setting to stop timer threads
-
     java.util.ResourceBundle.clearCache(ClassLoaderLeakPreventor.class.getClassLoader()); // TODO: Since Java 1.6
     
     //////////////////
@@ -312,6 +310,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   /** Deregister shutdown hook and execute it immediately */
+  @SuppressWarnings("deprecation")
   protected void removeShutdownHook(Thread shutdownHook) {
     final String displayString = "'" + shutdownHook + "' of type " + shutdownHook.getClass().getName();
     error("Removing shutdown hook: " + displayString);
@@ -326,8 +325,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     catch (InterruptedException e) {
       // Do nothing
     }
-    if(shutdownHook.isAlive())
+    if(shutdownHook.isAlive()) {
       error("Still running after " + TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS + " ms! " + shutdownHook);
+      error("  Stopping!");
+      shutdownHook.stop(); // TODO: Setting
+    }
   }
 
   protected void clearThreadLocalsOfAllThreads() {
@@ -438,6 +440,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       if(offendingField != null) {
         final Object providersPerClassloader = getStaticFieldValue(offendingField);
         if(providersPerClassloader instanceof Map) { // Map<ClassLoader, List<ValidationProvider<?>>> in offending code
+          //noinspection SynchronizationOnLocalVariableOrMethodParameter
           synchronized (providersPerClassloader) {
             // Fix the leak!
             ((Map)providersPerClassloader).remove(ClassLoaderLeakPreventor.class.getClassLoader());
