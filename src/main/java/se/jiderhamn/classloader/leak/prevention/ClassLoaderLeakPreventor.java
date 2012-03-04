@@ -22,6 +22,9 @@ import javax.xml.parsers.ParserConfigurationException;
  */
 public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter {
   
+  /** No of ms to wait for shutdown hook to finish execution */
+  private static final int TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS = 60 * 1000;
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Implement javax.servlet.Filter
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -193,8 +196,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // Deregister JDBC drivers contained in web application
     deregisterJdbcDrivers();
     
-    // TODO: Shutdown hooks
-    
+    // Deregister shutdown hooks - execute them immediately
+    deregisterShutdownHooks();
+
     // TODO: (JCE providers?)
     
     // TODO: RMI targets???
@@ -205,8 +209,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     // TODO: Setting to stop timer threads
 
-    // TODO org.apache.commons.logging.LogFactory.release(this.getClass().getClassLoader()); // TODO: Reflection. Test.
-    
     // TODO: Resource bundle cache?
     
     //////////////////
@@ -218,8 +220,31 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     fixBeanValidationApiLeak();
     
     // TODO More known offenders
+
+    // Release this classloader from Apache Commons Logging (ACL) by calling
+    //   LogFactory.release(this.getClass().getClassLoader());
+    // Use reflection in case ACL is not present.
+    // Do this last, in case other shutdown procedures want to log something.
+    
+    final Class logFactory = findClass("org.apache.commons.logging.LogFactory");
+    if(logFactory != null) { // Apache Commons Logging present
+      info("Releasing web app classloader from Apache Commons Logging");
+      try {
+        logFactory.getMethod("release", java.lang.ClassLoader.class).invoke(null, this.getClass().getClassLoader());
+      }
+      catch (IllegalAccessException iaex) {
+        error(iaex);
+      }
+      catch (InvocationTargetException itex) {
+        error(itex);
+      }
+      catch (NoSuchMethodException nsmex) {
+        error(nsmex);
+      }
+    }
+    
   }
-  
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -243,6 +268,45 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         error(e);
       }
     }
+  }
+
+  /** TODO: Document */
+  protected void deregisterShutdownHooks() {
+    // We will not remove known shutdown hooks, since loading the owning class of the hook,
+    // may register the hook if previously unregistered 
+    final Field field = findFieldOfClass("java.lang.ApplicationShutdownHooks", "hooks");
+    try {
+      Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) field.get(null);
+      // Iterate copy to avoid ConcurrentModificationException
+      for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
+        if(isLoadedInWebApplication(shutdownHook) || // Shutdown hook custom Thread class loaded in web app 
+          isWebAppClassLoaderOrChild(shutdownHook.getContextClassLoader())) { // Planned to run in web app
+          
+          removeShutdownHook(shutdownHook);
+        }
+      }
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
+    }
+  }
+
+  /** Deregister shutdown hook and execute it immediately */
+  protected void removeShutdownHook(Thread shutdownHook) {
+    error("Removing shutdown hook: " + shutdownHook);
+    Runtime.getRuntime().removeShutdownHook(shutdownHook);
+
+    info("Executing shutdown hook now: " + shutdownHook);
+    // Make sure it's from this web app instance
+    shutdownHook.start(); // Run cleanup immediately
+    try {
+      shutdownHook.join(TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS); // Wait for thread to run TODO: Create setting
+    }
+    catch (InterruptedException e) {
+      // Do nothing
+    }
+    if(shutdownHook.isAlive())
+      error("Still running after " + TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS + " ms! " + shutdownHook);
   }
 
   public static void fixBeanValidationApiLeak() {
@@ -269,20 +333,24 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     if(o == null)
       return false;
 
+    return isWebAppClassLoaderOrChild(o.getClass().getClassLoader());
+  }
+
+  /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
+  protected boolean isWebAppClassLoaderOrChild(ClassLoader cl) {
     final ClassLoader webAppCL = this.getClass().getClassLoader();
     // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
-    
-    ClassLoader cl = o.getClass().getClassLoader();
+
     while(cl != null) {
       if(cl == webAppCL)
         return true;
       
       cl = cl.getParent();
     }
-    
+
     return false;
   }
-  
+
   protected static Object getStaticFieldValue(String className, String fieldName) {
     Field staticField = findFieldOfClass(className, fieldName);
     return (staticField != null) ? getStaticFieldValue(staticField) : null;
