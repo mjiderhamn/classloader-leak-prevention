@@ -242,7 +242,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     // TODO: Setting to stop timer threads
 
-    java.util.ResourceBundle.clearCache(this.getClass().getClassLoader()); // TODO: Since Java 1.6
+    java.util.ResourceBundle.clearCache(ClassLoaderLeakPreventor.class.getClassLoader()); // TODO: Since Java 1.6
     
     //////////////////
     // Fix known leaks
@@ -263,7 +263,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     if(logFactory != null) { // Apache Commons Logging present
       info("Releasing web app classloader from Apache Commons Logging");
       try {
-        logFactory.getMethod("release", java.lang.ClassLoader.class).invoke(null, this.getClass().getClassLoader());
+        logFactory.getMethod("release", java.lang.ClassLoader.class)
+            .invoke(null, ClassLoaderLeakPreventor.class.getClassLoader());
       }
       catch (Exception ex) {
         error(ex);
@@ -351,7 +352,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
         if(thread.getThreadGroup() != null && "system".equals(thread.getThreadGroup().getName())) { // Ignore system thread TODO: "RMI Runtime"?
           if("Keep-Alive-Timer".equals(thread.getName())) {
-            thread.setContextClassLoader(this.getClass().getClassLoader().getParent());
+            thread.setContextClassLoader(ClassLoaderLeakPreventor.class.getClassLoader().getParent());
             debug("Changed contextClassLoader of HTTP keep alive thread");
           }
         }
@@ -437,8 +438,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       if(offendingField != null) {
         final Object providersPerClassloader = getStaticFieldValue(offendingField);
         if(providersPerClassloader instanceof Map) { // Map<ClassLoader, List<ValidationProvider<?>>> in offending code
-          // Fix the leak!
-          ((Map)providersPerClassloader).remove(ClassLoaderLeakPreventor.class.getClassLoader());
+          synchronized (providersPerClassloader) {
+            // Fix the leak!
+            ((Map)providersPerClassloader).remove(ClassLoaderLeakPreventor.class.getClassLoader());
+          }
         }
       }
     }
@@ -457,7 +460,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
   protected boolean isWebAppClassLoaderOrChild(ClassLoader cl) {
-    final ClassLoader webAppCL = this.getClass().getClassLoader();
+    final ClassLoader webAppCL = ClassLoaderLeakPreventor.class.getClassLoader();
     // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
 
     while(cl != null) {
@@ -680,7 +683,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         threadLocal.remove();
       }
       else { // We cannot remove entry properly, so just make it stale
-        info("  Will be made stale for later clearing");
+        info("  Will be made stale for later expunging");
         entry.clear(); // Clear the key
 
         if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
