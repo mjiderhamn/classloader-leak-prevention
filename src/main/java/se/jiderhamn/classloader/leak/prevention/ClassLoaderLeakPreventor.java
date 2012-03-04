@@ -24,6 +24,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ThreadPoolExecutor;
 import javax.servlet.*;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -272,7 +273,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Fix specific leaks
+  // Fix generic leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   /** Deregister JDBC drivers loaded by web app classloader */
@@ -300,18 +301,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   protected void deregisterShutdownHooks() {
     // We will not remove known shutdown hooks, since loading the owning class of the hook,
     // may register the hook if previously unregistered 
-    final Field field = findFieldOfClass("java.lang.ApplicationShutdownHooks", "hooks");
-    try {
-      Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) field.get(null);
-      // Iterate copy to avoid ConcurrentModificationException
-      for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
-        if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
-          removeShutdownHook(shutdownHook);
-        }
+    Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) getStaticFieldValue("java.lang.ApplicationShutdownHooks", "hooks");
+    // Iterate copy to avoid ConcurrentModificationException
+    for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
+      if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
+        removeShutdownHook(shutdownHook);
       }
-    }
-    catch (IllegalAccessException iaex) {
-      error(iaex);
     }
   }
 
@@ -341,10 +336,18 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
 
+  /**
+   * Partially inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesThreads()
+   */
+  @SuppressWarnings("deprecation")
   protected void stopThreads() {
+    final Class<?> workerClass = findClass("java.util.concurrent.ThreadPoolExecutor$Worker");
+    final Field targetField = findField(Thread.class, "target");
+
     for(Thread thread : getAllThreads()) {
+      final Runnable target = getFieldValue(targetField, thread);
       if(thread != Thread.currentThread() && // Ignore current thread
-         isThreadInWebApplication(thread)) {
+         (isThreadInWebApplication(thread) || isLoadedInWebApplication(target))) {
 
         if(thread.getThreadGroup() != null && "system".equals(thread.getThreadGroup().getName())) { // Ignore system thread TODO: "RMI Runtime"?
           if("Keep-Alive-Timer".equals(thread.getName())) {
@@ -359,12 +362,24 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
             stopTimerThread(thread);
           }
           else {
-          
-            // TODO: Special treatment of threads started by executor
-    
+            
+            // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
+            if(workerClass != null && workerClass.isInstance(target)) {
+              // TODO: Make setting?
+              try {
+                // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
+                final Field workerExecutor = findField(workerClass, "this$0");
+                final ThreadPoolExecutor executor = getFieldValue(workerExecutor, target);
+                executor.shutdownNow();
+              }
+              catch (Exception ex) {
+                error(ex);
+              }
+            }
+
             final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
             error("Thread " + displayString + " is still running in web app");
-            
+
             // TODO: Make setting for stopping
             info("Stopping Thread " + displayString);
             // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
@@ -410,6 +425,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       error(ex);
     }
   }
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Fix specific leaks
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   public static void fixBeanValidationApiLeak() {
     Class offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
@@ -507,9 +526,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  protected static Object getStaticFieldValue(Field field) {
+  protected static <T> T getStaticFieldValue(Field field) {
     try {
-      return field.get(null);
+      return (T) field.get(null);
     }
     catch (Exception ex) {
       warn(ex);
@@ -518,6 +537,17 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
+  protected static <T> T getFieldValue(Field field, Object obj) {
+    try {
+      return (T) field.get(obj);
+    }
+    catch (Exception ex) {
+      warn(ex);
+      // Silently ignore
+      return null;
+    }
+  }
+
   /** Get a Collection with all Threads. 
    * This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.getThreads() */
   protected Collection<Thread> getAllThreads() {
@@ -569,8 +599,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         processThreadLocalMap(thread, threadLocalProcessor, java_lang_Thread_inheritableThreadLocals.get(thread));
       }
     }
-    catch (IllegalAccessException iaex) {
-      error(iaex);
+    catch (/*IllegalAccess*/Exception ex) {
+      error(ex);
     }
   }
 
