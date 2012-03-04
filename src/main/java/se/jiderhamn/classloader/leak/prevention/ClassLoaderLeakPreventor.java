@@ -4,6 +4,8 @@ package se.jiderhamn.classloader.leak.prevention;
 import java.io.IOException;
 import java.lang.ref.Reference;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -12,6 +14,7 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import javax.servlet.*;
+import javax.xml.parsers.ParserConfigurationException;
 
 /**
  * TODO: Document
@@ -81,11 +84,110 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public void contextInitialized(ServletContextEvent servletContextEvent) {
-    // TODO: Initialize known JRE problems
-    // TODO: Create test cases
+    
+    info(getClass().getName() + " initializing context by loading some known offenders with system classloader");
+    
+    // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
+    // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
+    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+    try {
+      // TODO: Create test cases
+      // Switch to system classloader in before we load/call some JRE stuff that will cause 
+      // the current classloader to be available for gerbage collection
+      Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
+      
+      java.awt.Toolkit.getDefaultToolkit(); // TODO: Default unused?
+      
+      java.security.Security.getProviders();
+      
+      java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
+
+      javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
+
+      try {
+        Class.forName("javax.security.auth.Policy")
+            .getMethod("getPolicy")
+            .invoke(null);
+      }
+      catch (IllegalAccessException iaex) {
+        error(iaex);
+      }
+      catch (InvocationTargetException itex) {
+        error(itex);
+      }
+      catch (NoSuchMethodException nsmex) {
+        error(nsmex);
+      }
+      catch (ClassNotFoundException e) {
+        // Ignore silently - class is deprecated
+      }
+
+      try {
+        javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
+      }
+      catch (ParserConfigurationException pcex) {
+        error(pcex);
+      }
+
+      try {
+        Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
+      }
+      catch (ClassNotFoundException e) {
+        // Do nothing
+      }
+
+      // TODO: Investigate JarURLConnections 
+      
+      /////////////////////////////////////////////////////
+      // Load Sun specific classes that may cause leaks
+      
+      final boolean isSunJRE = System.getProperty("java.vendor").startsWith("Sun");
+      
+      try {
+        Class.forName("com.sun.jndi.ldap.LdapPoolManager");
+      }
+      catch(ClassNotFoundException cnfex) {
+        if(isSunJRE)
+          error(cnfex);
+      }
+
+      try {
+        Class.forName("sun.java2d.Disposer");
+      }
+      catch (ClassNotFoundException cnfex) {
+        if(isSunJRE)
+          error(cnfex);
+      }
+
+      try {
+        Class<?> gcClass = Class.forName("sun.misc.GC");
+        final Method requestLatency = gcClass.getDeclaredMethod("requestLatency", long.class);
+        requestLatency.invoke(null, 3600000L);
+      }
+      catch (ClassNotFoundException cnfex) {
+        if(isSunJRE)
+          error(cnfex);
+      }
+      catch (NoSuchMethodException nsmex) {
+        error(nsmex);
+      }
+      catch (IllegalAccessException iaex) {
+        error(iaex);
+      }
+      catch (InvocationTargetException itex) {
+        error(itex);
+      }
+    }
+    finally {
+      // Reset original classloader
+      Thread.currentThread().setContextClassLoader(contextClassLoader);
+    }
   }
 
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
+    
+    info(getClass().getName() + " shutting down context by removing known leaks");
+    
     // TODO: More known leaks
     
     // Deregister JDBC drivers contained in web application
@@ -128,12 +230,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     final Enumeration<Driver> allDrivers = DriverManager.getDrivers();
     while(allDrivers.hasMoreElements()) {
       final Driver driver = allDrivers.nextElement();
-      if(isLoadedInWebApplication(driver))
+      if(isLoadedInWebApplication(driver)) // Should be true for all returned by DriverManager.getDrivers()
         driversToDeregister.add(driver);
     }
     
     for(Driver driver : driversToDeregister) {
       try {
+        warn("JDBC driver loaded by web app deregistered: " + driver.getClass());
         DriverManager.deregisterDriver(driver);
       }
       catch (SQLException e) {
