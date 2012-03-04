@@ -59,5 +59,12 @@
       <version>0.2</version>
       <scope>test</scope>
     </dependency>
+    <!-- JDBC driver for DriverManager test -->
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>5.1.18</version>
+      <scope>test</scope>
+    </dependency>    
   </dependencies>
 </project>
