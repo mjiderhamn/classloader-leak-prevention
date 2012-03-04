@@ -202,8 +202,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     info(getClass().getName() + " shutting down context by removing known leaks");
     
-    // TODO: More known leaks
-    
     // Deregister JDBC drivers contained in web application
     deregisterJdbcDrivers();
     
@@ -214,20 +212,19 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     // TODO: RMI targets???
     
-    // TODO: ThreadLocals of all threads
+    clearThreadLocalsOfAllThreads();
     
-    // TODO: Setting to stop threads
     stopThreads();
     
     // TODO: Setting to stop timer threads
 
-    // TODO: Resource bundle cache?
+    java.util.ResourceBundle.clearCache(this.getClass().getClassLoader()); // TODO: Since Java 1.6
     
     //////////////////
     // Fix known leaks
     //////////////////
     
-    java.beans.Introspector.flushCaches(); // Clear cache of strong references TODO: Create test
+    java.beans.Introspector.flushCaches(); // Clear cache of strong references
     
     fixBeanValidationApiLeak();
     
@@ -282,7 +279,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
 
-  /** TODO: Document */
+  /** Find and deregister shutdown hooks. Will by default execute the hooks after removing them. */
   protected void deregisterShutdownHooks() {
     // We will not remove known shutdown hooks, since loading the owning class of the hook,
     // may register the hook if previously unregistered 
@@ -320,28 +317,42 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       error("Still running after " + TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS + " ms! " + shutdownHook);
   }
 
+  protected void clearThreadLocalsOfAllThreads() {
+    final ThreadLocalProcessor clearingThreadLocalProcessor = new ClearingThreadLocalProcessor();
+    for(Thread thread : getAllThreads()) {
+      forEachThreadLocalInThread(thread, clearingThreadLocalProcessor);
+    }
+  }
+
   protected void stopThreads() {
     for(Thread thread : getAllThreads()) {
       if(thread != Thread.currentThread() && // Ignore current thread
-         isThreadInWebApplication(thread) &&
-         (thread.getThreadGroup() == null || ! "system".equals(thread.getThreadGroup().getName())) && // Ignore system thread TODO: "RMI Runtime"?
-         thread.isAlive()) { // Running in web app
+         isThreadInWebApplication(thread)) {
 
-        if("java.util.TimerThread".equals(thread.getClass().getName())) {
-          // TODO: Special treatment
+        if(thread.getThreadGroup() != null && "system".equals(thread.getThreadGroup().getName())) { // Ignore system thread TODO: "RMI Runtime"?
+          if("Keep-Alive-Timer".equals(thread.getName())) {
+            thread.setContextClassLoader(this.getClass().getClassLoader().getParent());
+            debug("Changed contextClassLoader of HTTP keep alive thread");
+          }
         }
+        else if(thread.isAlive()) { // Non-system, running in web app
         
-        // TODO: Special treatment of threads started by executor
-
-        final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-        error("Thread " + displayString + " is still running in web app");
-        
-        // TODO: Make setting for stopping
-        info("Stopping Thread " + displayString);
-        // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
-        // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
-        // TODO: Give it some time first?
-        thread.stop();
+          if("java.util.TimerThread".equals(thread.getClass().getName())) {
+            // TODO: Special treatment
+          }
+          
+          // TODO: Special treatment of threads started by executor
+  
+          final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
+          error("Thread " + displayString + " is still running in web app");
+          
+          // TODO: Make setting for stopping
+          info("Stopping Thread " + displayString);
+          // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
+          // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
+          // TODO: Give it some time first?
+          thread.stop();
+        }
       }
     }
   }
@@ -365,7 +376,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  /** Test if provided object is loaded with web application classloader */ // TODO: Create test
+  /** Test if provided object is loaded with web application classloader */
   protected boolean isLoadedInWebApplication(Object o) {
     return o != null && 
         isWebAppClassLoaderOrChild(o.getClass().getClassLoader());
@@ -409,15 +420,14 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     try {
       return Class.forName(className);
     }
-    // TODO
 //    catch (NoClassDefFoundError e) {
 //      // Silently ignore
 //      return null;
 //    }
-//    catch (ClassNotFoundException e) {
-//      // Silently ignore
-//      return null;
-//    }
+    catch (ClassNotFoundException e) {
+      // Silently ignore
+      return null;
+    }
     catch (Exception ex) { // Example SecurityException
       warn(ex);
       return null;
@@ -456,46 +466,53 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   protected Collection<Thread> getAllThreads() {
     return Thread.getAllStackTraces().keySet(); // TODO: Compare performance with ThreadGroup.enumerate()
-    // TODO: Filter JVM Threads here?
   }
   
   /**
    * Loop ThreadLocals and inheritable ThreadLocals in current Thread
    * and for each found, invoke the callback interface
-   * TODO: Create test case
    */
   protected void forEachThreadLocalInCurrentThread(ThreadLocalProcessor threadLocalProcessor) {
     final Thread thread = Thread.currentThread();
 
+    forEachThreadLocalInThread(thread, threadLocalProcessor);
+  }
 
+  protected void forEachThreadLocalInThread(Thread thread, ThreadLocalProcessor threadLocalProcessor) {
     try {
-      Class<?> threadLocalMapClass = Class.forName("java.lang.ThreadLocal$ThreadLocalMap");
+      Object threadLocalsMap = findField(Thread.class, "threadLocals").get(thread);
+      processThreadLocalMap(thread, threadLocalProcessor, threadLocalsMap);
+
+      Object inheritableThreadLocalsMap = findField(Thread.class, "inheritableThreadLocals");
+      processThreadLocalMap(thread, threadLocalProcessor, inheritableThreadLocalsMap);
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
+    }
+  }
+
+  protected void processThreadLocalMap(Thread thread, ThreadLocalProcessor threadLocalProcessor, Object threadLocalMap) throws IllegalAccessException {
+    try {
+      final Class<?> threadLocalMapClass = Class.forName("java.lang.ThreadLocal$ThreadLocalMap");
       final Field threadLocalMapTableField = findField(threadLocalMapClass, "table");
-      final Field threadLocals = findField(Thread.class, "threadLocals");
-      Object threadLocalMap = threadLocals.get(thread);
       if(threadLocalMap != null) {
-        final Object[] threadLocalMapTable = (Object[]) threadLocalMapTableField.get(threadLocalMap); // java.lang.ThreadLocal.ThreadLocalMap.Entry[]
-        for(Object entry : threadLocalMapTable) {
-          if(entry != null) {
-            // Key is kept in WeakReference
-            Reference reference = (Reference) entry;
-            final ThreadLocal<?> threadLocal = (ThreadLocal<?>) reference.get();
-  
-            final Field valueField = findField(entry.getClass(), "value"); // TODO: Consider looking up in constructor and making protected
-            final Object value = valueField.get(entry);
-  
-            threadLocalProcessor.process(thread, reference, threadLocal, value);
-          }
+      final Object[] threadLocalMapTable = (Object[]) threadLocalMapTableField.get(threadLocalMap); // java.lang.ThreadLocal.ThreadLocalMap.Entry[]
+      for(Object entry : threadLocalMapTable) {
+        if(entry != null) {
+          // Key is kept in WeakReference
+          Reference reference = (Reference) entry;
+          final ThreadLocal<?> threadLocal = (ThreadLocal<?>) reference.get();
+
+          final Field valueField = findField(entry.getClass(), "value"); // TODO: Consider looking up in constructor and making protected
+          final Object value = valueField.get(entry);
+
+          threadLocalProcessor.process(thread, reference, threadLocal, value);
         }
       }
-
-      findField(Thread.class, "inheritableThreadLocals"); // TODO: Implement
     }
-    catch (ClassNotFoundException e) {
-      e.printStackTrace();  // TODO
     }
-    catch (IllegalAccessException e) {
-      e.printStackTrace();  // TODO
+    catch (ClassNotFoundException cnfex) {
+      error(cnfex);
     }
   }
 
@@ -506,10 +523,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** ThreadLocalProcessor that detects and warns about potential leaks */
   protected class WarningThreadLocalProcessor implements ThreadLocalProcessor {
     public final void process(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value) {
-      // TODO: Consider case when classloader itself is value
       final boolean customThreadLocal = isLoadedInWebApplication(threadLocal); // This is not an actual problem
       final boolean valueLoadedInWebApp = isLoadedInWebApplication(value);
-      if(customThreadLocal || valueLoadedInWebApp) {
+      if(customThreadLocal || valueLoadedInWebApp ||
+         (value instanceof ClassLoader && isWebAppClassLoaderOrChild((ClassLoader) value))) { // The value is classloader (child) itself
         // This ThreadLocal is either itself loaded by the web app classloader, or it's value is
         // Let's do something about it
         
