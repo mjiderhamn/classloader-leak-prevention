@@ -22,7 +22,7 @@ public class ApacheAxis14Test {
     public void run() {
       try {
         final ClassLoaderLeakPreventor classLoaderLeakPreventor = new ClassLoaderLeakPreventor();
-        classLoaderLeakPreventor.init(null); // TODO: Init before test
+        classLoaderLeakPreventor.init(new MockFilterConfig()); // TODO: Init before test
         classLoaderLeakPreventor.doFilter(null, null, new MockFilterChain());
       }
       catch (Exception e) {
