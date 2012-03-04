@@ -129,7 +129,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
     final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
     try {
-      // TODO: Create test cases
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
       // the current classloader to be available for gerbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
@@ -488,8 +487,35 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
+  /** Get a Collection with all Threads. 
+   * This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.getThreads() */
   protected Collection<Thread> getAllThreads() {
-    return Thread.getAllStackTraces().keySet(); // TODO: Compare performance with ThreadGroup.enumerate()
+    // This is some orders of magnitude slower...
+    // return Thread.getAllStackTraces().keySet();
+    
+    // Find root ThreadGroup
+    ThreadGroup tg = Thread.currentThread().getThreadGroup();
+    while(tg.getParent() != null)
+      tg = tg.getParent();
+    
+    // Note that ThreadGroup.enumerate() silently ignores all threads that does not fit into array
+    int guessThreadCount = tg.activeCount() + 50;
+    Thread[] threads = new Thread[guessThreadCount];
+    int actualThreadCount = tg.enumerate(threads);
+    while(actualThreadCount == guessThreadCount) { // Map was filled, there may be more
+      guessThreadCount *= 2;
+      threads = new Thread[guessThreadCount];
+      actualThreadCount = tg.enumerate(threads);
+    }
+    
+    // Filter out nulls
+    final List<Thread> output = new ArrayList<Thread>();
+    for(Thread t : threads) {
+      if(t != null) {
+        output.add(t);
+      }
+    }
+    return output;
   }
   
   /**
