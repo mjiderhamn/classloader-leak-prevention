@@ -264,14 +264,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       try {
         logFactory.getMethod("release", java.lang.ClassLoader.class).invoke(null, this.getClass().getClassLoader());
       }
-      catch (IllegalAccessException iaex) {
-        error(iaex);
-      }
-      catch (InvocationTargetException itex) {
-        error(itex);
-      }
-      catch (NoSuchMethodException nsmex) {
-        error(nsmex);
+      catch (Exception ex) {
+        error(ex);
       }
     }
     
@@ -361,22 +355,59 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         else if(thread.isAlive()) { // Non-system, running in web app
         
           if("java.util.TimerThread".equals(thread.getClass().getName())) {
-            // TODO: Special treatment
+            // TODO: Create setting whether to actually stop
+            stopTimerThread(thread);
           }
+          else {
           
-          // TODO: Special treatment of threads started by executor
-  
-          final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-          error("Thread " + displayString + " is still running in web app");
-          
-          // TODO: Make setting for stopping
-          info("Stopping Thread " + displayString);
-          // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
-          // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
-          // TODO: Give it some time first?
-          thread.stop();
+            // TODO: Special treatment of threads started by executor
+    
+            final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
+            error("Thread " + displayString + " is still running in web app");
+            
+            // TODO: Make setting for stopping
+            info("Stopping Thread " + displayString);
+            // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
+            // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
+            // TODO: Give it some time first?
+            thread.stop();
+          }
         }
       }
+    }
+  }
+
+  protected void stopTimerThread(Thread thread) {
+    // Seems it is not possible to access Timer of TimerThread, so we need to mimick Timer.cancel()
+    /** 
+    try {
+      Timer timer = (Timer) findField(thread.getClass(), "this$0").get(thread); // This does not work!
+      warn("Cancelling Timer " + timer + " / TimeThread '" + thread + "'");
+      timer.cancel();
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
+    }
+    */
+
+    try {
+      final Field newTasksMayBeScheduled = findField(thread.getClass(), "newTasksMayBeScheduled");
+      final Object queue = findField(thread.getClass(), "queue").get(thread); // java.lang.TaskQueue
+      final Method clear = queue.getClass().getDeclaredMethod("clear");
+      clear.setAccessible(true);
+
+      // Do that java.util.Timer.cancel() does
+      //noinspection SynchronizationOnLocalVariableOrMethodParameter
+      synchronized (queue) {
+        newTasksMayBeScheduled.set(thread, false);
+        clear.invoke(queue);
+        queue.notify(); // "In case queue was already empty."
+      }
+      
+      // We shouldn't need to join() here, thread will finish soon enough
+    }
+    catch (Exception ex) {
+      error(ex);
     }
   }
 
