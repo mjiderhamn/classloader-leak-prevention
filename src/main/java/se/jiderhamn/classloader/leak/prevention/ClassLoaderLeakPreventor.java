@@ -53,7 +53,31 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    * When filter is set to paranoid mode, it will look for uncleared ThreadLocals when processing each request and
    * if found, will clear them.
    */
-  protected boolean filterParanoidMode = false; 
+  protected boolean filterParanoidMode = false;
+
+  protected final Field java_lang_Thread_threadLocals;
+
+  protected final Field java_lang_Thread_inheritableThreadLocals;
+
+  protected final Field java_lang_ThreadLocal$ThreadLocalMap_table;
+
+  protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
+
+  public ClassLoaderLeakPreventor() {
+    // Initialize some reflection variables
+    java_lang_Thread_threadLocals = findField(Thread.class, "threadLocals");
+    java_lang_Thread_inheritableThreadLocals = findField(Thread.class, "inheritableThreadLocals");
+    java_lang_ThreadLocal$ThreadLocalMap_table = findFieldOfClass("java.lang.ThreadLocal$ThreadLocalMap", "table");
+    
+    if(java_lang_Thread_threadLocals == null)
+      error("java.lang.Thread.threadLocals not found; something is seriously wrong!");
+    
+    if(java_lang_Thread_inheritableThreadLocals == null)
+      error("java.lang.Thread.inheritableThreadLocals not found; something is seriously wrong!");
+
+    if(java_lang_ThreadLocal$ThreadLocalMap_table == null)
+      error("java.lang.ThreadLocal$ThreadLocalMap.table not found; something is seriously wrong!");
+  }
 
   public void init(FilterConfig filterConfig) throws ServletException {
     filterDebugMode = "true".equals(filterConfig.getInitParameter("debug"));
@@ -480,11 +504,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   protected void forEachThreadLocalInThread(Thread thread, ThreadLocalProcessor threadLocalProcessor) {
     try {
-      Object threadLocalsMap = findField(Thread.class, "threadLocals").get(thread);
-      processThreadLocalMap(thread, threadLocalProcessor, threadLocalsMap);
+      if(java_lang_Thread_threadLocals != null) {
+        processThreadLocalMap(thread, threadLocalProcessor, java_lang_Thread_threadLocals.get(thread));
+      }
 
-      Object inheritableThreadLocalsMap = findField(Thread.class, "inheritableThreadLocals");
-      processThreadLocalMap(thread, threadLocalProcessor, inheritableThreadLocalsMap);
+      if(java_lang_Thread_inheritableThreadLocals != null) {
+        processThreadLocalMap(thread, threadLocalProcessor, java_lang_Thread_inheritableThreadLocals.get(thread));
+      }
     }
     catch (IllegalAccessException iaex) {
       error(iaex);
@@ -492,27 +518,23 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   protected void processThreadLocalMap(Thread thread, ThreadLocalProcessor threadLocalProcessor, Object threadLocalMap) throws IllegalAccessException {
-    try {
-      final Class<?> threadLocalMapClass = Class.forName("java.lang.ThreadLocal$ThreadLocalMap");
-      final Field threadLocalMapTableField = findField(threadLocalMapClass, "table");
-      if(threadLocalMap != null) {
-      final Object[] threadLocalMapTable = (Object[]) threadLocalMapTableField.get(threadLocalMap); // java.lang.ThreadLocal.ThreadLocalMap.Entry[]
+    if(threadLocalMap != null && java_lang_ThreadLocal$ThreadLocalMap_table != null) {
+      final Object[] threadLocalMapTable = (Object[]) java_lang_ThreadLocal$ThreadLocalMap_table.get(threadLocalMap); // java.lang.ThreadLocal.ThreadLocalMap.Entry[]
       for(Object entry : threadLocalMapTable) {
         if(entry != null) {
           // Key is kept in WeakReference
           Reference reference = (Reference) entry;
           final ThreadLocal<?> threadLocal = (ThreadLocal<?>) reference.get();
 
-          final Field valueField = findField(entry.getClass(), "value"); // TODO: Consider looking up in constructor and making protected
-          final Object value = valueField.get(entry);
+          if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
+            java_lang_ThreadLocal$ThreadLocalMap$Entry_value = findField(entry.getClass(), "value");
+          }
+          
+          final Object value = java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry);
 
           threadLocalProcessor.process(thread, reference, threadLocal, value);
         }
       }
-    }
-    }
-    catch (ClassNotFoundException cnfex) {
-      error(cnfex);
     }
   }
 
@@ -573,9 +595,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       else { // We cannot remove entry properly, so just make it stale
         info("  Will be made stale for later clearing");
         entry.clear(); // Clear the key
-        final Field valueField = findField(entry.getClass(), "value"); // TODO: Consider looking up in constructor and making protected
+
+        if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
+          java_lang_ThreadLocal$ThreadLocalMap$Entry_value = findField(entry.getClass(), "value");
+        }
+
         try {
-          valueField.set(entry, null); // Clear value to avoid circular references
+          java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
         }
         catch (IllegalAccessException iaex) {
           error(iaex);
