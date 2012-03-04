@@ -9,10 +9,7 @@ import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import javax.servlet.*;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -155,7 +152,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       }
 
       try {
-        Class.forName("sun.java2d.Disposer");
+        Class.forName("sun.java2d.Disposer"); // TODO: Default to false?
       }
       catch (ClassNotFoundException cnfex) {
         if(isSunJRE)
@@ -206,6 +203,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // TODO: ThreadLocals of all threads
     
     // TODO: Setting to stop threads
+    stopThreads();
     
     // TODO: Setting to stop timer threads
 
@@ -279,9 +277,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) field.get(null);
       // Iterate copy to avoid ConcurrentModificationException
       for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
-        if(isLoadedInWebApplication(shutdownHook) || // Shutdown hook custom Thread class loaded in web app 
-          isWebAppClassLoaderOrChild(shutdownHook.getContextClassLoader())) { // Planned to run in web app
-          
+        if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
           removeShutdownHook(shutdownHook);
         }
       }
@@ -293,10 +289,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   /** Deregister shutdown hook and execute it immediately */
   protected void removeShutdownHook(Thread shutdownHook) {
-    error("Removing shutdown hook: " + shutdownHook);
+    final String displayString = "'" + shutdownHook + "' of type " + shutdownHook.getClass().getName();
+    error("Removing shutdown hook: " + displayString);
     Runtime.getRuntime().removeShutdownHook(shutdownHook);
 
-    info("Executing shutdown hook now: " + shutdownHook);
+    info("Executing shutdown hook now: " + displayString);
     // Make sure it's from this web app instance
     shutdownHook.start(); // Run cleanup immediately
     try {
@@ -307,6 +304,32 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
     if(shutdownHook.isAlive())
       error("Still running after " + TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS + " ms! " + shutdownHook);
+  }
+
+  protected void stopThreads() {
+    for(Thread thread : getAllThreads()) {
+      if(thread != Thread.currentThread() && // Ignore current thread
+         isThreadInWebApplication(thread) &&
+         (thread.getThreadGroup() == null || ! "system".equals(thread.getThreadGroup().getName())) && // Ignore system thread TODO: "RMI Runtime"?
+         thread.isAlive()) { // Running in web app
+
+        if("java.util.TimerThread".equals(thread.getClass().getName())) {
+          // TODO: Special treatment
+        }
+        
+        // TODO: Special treatment of threads started by executor
+
+        final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
+        error("Thread " + displayString + " is still running in web app");
+        
+        // TODO: Make setting for stopping
+        info("Stopping Thread " + displayString);
+        // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
+        // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
+        // TODO: Give it some time first?
+        thread.stop();
+      }
+    }
   }
 
   public static void fixBeanValidationApiLeak() {
@@ -330,10 +353,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Test if provided object is loaded with web application classloader */ // TODO: Create test
   protected boolean isLoadedInWebApplication(Object o) {
-    if(o == null)
-      return false;
-
-    return isWebAppClassLoaderOrChild(o.getClass().getClassLoader());
+    return o != null && 
+        isWebAppClassLoaderOrChild(o.getClass().getClassLoader());
   }
 
   /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
@@ -349,6 +370,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
 
     return false;
+  }
+
+  protected boolean isThreadInWebApplication(Thread thread) {
+    return isLoadedInWebApplication(thread) || // Custom Thread class in web app
+       isWebAppClassLoaderOrChild(thread.getContextClassLoader()); // Running in web application
   }
 
   protected static Object getStaticFieldValue(String className, String fieldName) {
@@ -414,6 +440,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
+  protected Collection<Thread> getAllThreads() {
+    return Thread.getAllStackTraces().keySet(); // TODO: Compare performance with ThreadGroup.enumerate()
+    // TODO: Filter JVM Threads here?
+  }
+  
   /**
    * Loop ThreadLocals and inheritable ThreadLocals in current Thread
    * and for each found, invoke the callback interface
@@ -444,8 +475,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         }
       }
 
-      findField(Thread.class, "inheritableThreadLocals");
-      // TODO: Implement
+      findField(Thread.class, "inheritableThreadLocals"); // TODO: Implement
     }
     catch (ClassNotFoundException e) {
       e.printStackTrace();  // TODO
