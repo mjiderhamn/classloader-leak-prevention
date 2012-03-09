@@ -37,13 +37,11 @@ public class ThreadLocalCustomValueCleanupTest {
   
   public static class Preventor implements Runnable {
     public void run() {
-      new ThreadLocalPrevention().clearThreadLocals();
-    }
-  }
-  
-  private static class ThreadLocalPrevention extends ClassLoaderLeakPreventor {
-    public void clearThreadLocals() {
-      forEachThreadLocalInCurrentThread(new ClearingThreadLocalProcessor());
+      new ClassLoaderLeakPreventor() {
+        { // Initializer / "Constructor"
+          forEachThreadLocalInCurrentThread(new ClearingThreadLocalProcessor());
+        }
+      };
     }
   }
 }

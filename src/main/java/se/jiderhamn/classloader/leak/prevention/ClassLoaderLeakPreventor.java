@@ -20,6 +20,7 @@ import java.lang.ref.Reference;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.URL;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -50,7 +51,7 @@ import javax.xml.parsers.ParserConfigurationException;
  * to make it "outermost".
  *
  * <h1>Configuration</h1>
- * <h2>Filter</h2>
+ * <h3>Filter</h3>
  * <p>For the filter, there are two additional settings that can be used: debug mode and paranoid mode. 
  * Debug mode means that at the end of each request, the filter will look for any uncleared <code>ThreadLocal</code>s
  * (in addition to it's list of known offenders), and issue a warning for each one found. This can be useful to find 
@@ -241,8 +242,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         // Do nothing
       }
 
-      // TODO: Investigate JarURLConnections 
-      
+      // This probably does not affect classloaders, but prevents some problems with .jar files
+      try {
+        // URL needs to be well-formed, but does not need to exist
+        new URL("jar:file://dummy.jar!/").openConnection().setDefaultUseCaches(false);
+      }
+      catch (Exception ex) {
+        error(ex);
+      }
+
       /////////////////////////////////////////////////////
       // Load Sun specific classes that may cause leaks
       
@@ -299,7 +307,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // Deregister shutdown hooks - execute them immediately
     deregisterShutdownHooks();
 
-    // TODO: JCE providers? java.security.Security.addProvider()
+    deregisterSecurityProviders();
     
     // TODO: RMI targets???
     
@@ -399,6 +407,20 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
 
+  /** Deregister custom security providers */
+  protected void deregisterSecurityProviders() {
+    final Set<String> providersToRemove = new HashSet<String>();
+    for(java.security.Provider provider : java.security.Security.getProviders()) {
+      if(isLoadedInWebApplication(provider)) {
+        providersToRemove.add(provider.getName());
+      }
+    }
+    warn("Removing security providers loaded in web app: " + providersToRemove);
+    for(String providerName : providersToRemove) {
+      java.security.Security.removeProvider(providerName);
+    }
+  }
+
   protected void clearThreadLocalsOfAllThreads() {
     final ThreadLocalProcessor clearingThreadLocalProcessor = new ClearingThreadLocalProcessor();
     for(Thread thread : getAllThreads()) {
@@ -419,7 +441,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       if(thread != Thread.currentThread() && // Ignore current thread
          (isThreadInWebApplication(thread) || isLoadedInWebApplication(target))) {
 
-        if(thread.getThreadGroup() != null && "system".equals(thread.getThreadGroup().getName())) { // Ignore system thread TODO: "RMI Runtime"?
+        if(thread.getThreadGroup() != null && 
+           ("system".equals(thread.getThreadGroup().getName()) ||  // System thread
+            "RMI Runtime".equals(thread.getThreadGroup().getName()))) { // RMI thread (honestly, just copied from Tomcat)
+          
           if("Keep-Alive-Timer".equals(thread.getName())) {
             thread.setContextClassLoader(ClassLoaderLeakPreventor.class.getClassLoader().getParent());
             debug("Changed contextClassLoader of HTTP keep alive thread");
@@ -779,16 +804,20 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    * Feel free however to subclass or fork and use a log framework, in case you think you know what you're doing.
    */
   
+  protected static String getLogPrefix() {
+    return ClassLoaderLeakPreventor.class.getSimpleName() + ": ";
+  }
+  
   protected static void debug(String s) {
-    System.out.println(s);
+    System.out.println(getLogPrefix() + s);
   } 
 
   protected static void info(String s) {
-    System.out.println(s);
+    System.out.println(getLogPrefix() + s);
   } 
 
   protected static void warn(String s) {
-    System.err.println(s);
+    System.err.println(getLogPrefix() + s);
   } 
 
   protected static void warn(Throwable t) {
@@ -796,7 +825,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   } 
 
   protected static void error(String s) {
-    System.err.println(s);
+    System.err.println(getLogPrefix() + s);
   } 
 
   protected static void error(Throwable t) {
