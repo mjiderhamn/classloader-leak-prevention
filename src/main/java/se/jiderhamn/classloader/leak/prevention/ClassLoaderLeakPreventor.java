@@ -17,6 +17,7 @@ package se.jiderhamn.classloader.leak.prevention;
 
 import java.io.IOException;
 import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -202,7 +203,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // the current classloader to be available for gerbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
       
-      java.awt.Toolkit.getDefaultToolkit(); // TODO: Default unused?
+      java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
       
       java.security.Security.getProviders();
       
@@ -265,7 +266,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       }
 
       try {
-        Class.forName("sun.java2d.Disposer"); // TODO: Default to false?
+        Class.forName("sun.java2d.Disposer"); // Will start a Thread
       }
       catch (ClassNotFoundException cnfex) {
         if(isSunJRE)
@@ -309,13 +310,44 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     deregisterSecurityProviders();
     
-    // TODO: RMI targets???
+    // TODO: RMI targets
     
     clearThreadLocalsOfAllThreads();
     
     stopThreads();
-    
-    java.util.ResourceBundle.clearCache(ClassLoaderLeakPreventor.class.getClassLoader()); // TODO: Since Java 1.6
+
+    try {
+      try { // First try Java 1.6 method
+        final Method clearCache16 = ResourceBundle.class.getMethod("clearCache", ClassLoader.class);
+        debug("Since Java 1.6+ is used, we can call " + clearCache16);
+        clearCache16.invoke(null, ClassLoaderLeakPreventor.class.getClassLoader());
+      }
+      catch (NoSuchMethodException e) {
+        // Not Java 1.6+, we have to clear manually
+        final Map<?,?> cacheList = getStaticFieldValue(ResourceBundle.class, "cacheList"); // Java 5: SoftCache extends AbstractMap
+        final Iterator<?> iter = cacheList.keySet().iterator();
+        Field loaderRefField = null;
+        while(iter.hasNext()) {
+          Object key = iter.next(); // CacheKey
+          
+          if(loaderRefField == null) { // First time
+            loaderRefField = key.getClass().getDeclaredField("loaderRef");
+            loaderRefField.setAccessible(true);
+          }
+          WeakReference<ClassLoader> loaderRef = (WeakReference<ClassLoader>) loaderRefField.get(key); // LoaderReference extends WeakReference
+          ClassLoader classLoader = loaderRef.get();
+          
+          if(isWebAppClassLoaderOrChild(classLoader)) {
+            info("Removing ResourceBundle from cache: " + key);
+            iter.remove();
+          }
+          
+        }
+      }
+    }
+    catch(Exception ex) {
+      error(ex);
+    }
     
     //////////////////
     // Fix known leaks
@@ -572,10 +604,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     return isLoadedInWebApplication(thread) || // Custom Thread class in web app
        isWebAppClassLoaderOrChild(thread.getContextClassLoader()); // Running in web application
   }
+  
+  protected static <E> E getStaticFieldValue(Class clazz, String fieldName) {
+    Field staticField = findField(clazz, fieldName);
+    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
+  }
 
-  protected static Object getStaticFieldValue(String className, String fieldName) {
+  protected static <E> E getStaticFieldValue(String className, String fieldName) {
     Field staticField = findFieldOfClass(className, fieldName);
-    return (staticField != null) ? getStaticFieldValue(staticField) : null;
+    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
   
   protected static Field findFieldOfClass(String className, String fieldName) {
