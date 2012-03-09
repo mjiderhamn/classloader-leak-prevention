@@ -29,8 +29,75 @@ import javax.servlet.*;
 import javax.xml.parsers.ParserConfigurationException;
 
 /**
- * TODO: Document
- * @author Mattias Jiderhamn
+ * This class helps prevent classloader leaks.
+ * <h1>Basic setup</h1>
+ * <p>Activate protection by adding this class as a context listener
+ * in your <code>web.xml</code>, like this:</p>
+ * <pre>
+ *  &lt;listener&gt;
+ *     &lt;listener-class&gt;se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor&lt;/listener-class&gt;
+ *  &lt;/listener&gt; 
+ * </pre>
+ * 
+ * <p>For improved protection against uncleared <code>ThreadLocal</code>s, configure also as a filter:</p>
+ * 
+ * <pre>
+ *  &lt;filter filter-name="ClassLoaderLeakPreventorFilter" filter-class="se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor" /&gt;
+ *  &lt;filter-mapping filter-name="ClassLoaderLeakPreventorFilter" url-pattern="/*" /&gt;
+ * </pre>
+ * 
+ * You should usually declare this <code>listener</code>/<code>filter</code> before any other listeners/filters,
+ * to make it "outermost".
+ *
+ * <h1>Configuration</h1>
+ * <h2>Filter</h2>
+ * <p>For the filter, there are two additional settings that can be used: debug mode and paranoid mode. 
+ * Debug mode means that at the end of each request, the filter will look for any uncleared <code>ThreadLocal</code>s
+ * (in addition to it's list of known offenders), and issue a warning for each one found. This can be useful to find 
+ * out when/where a <code>ThreadLocal</code> is added. Paranoid mode will not only warn, but will also remove the 
+ * uncleared <code>ThreadLocal</code>. Both of these modes affect the performance of your web application and it is not 
+ * recommended to use them under normal operation, but only for debugging purposes. Once the leak is located, it should 
+ * be fixed or - in case it is out of your control - added to the list of know offenders in the 
+ * filter <code>init()</code> method.</p>
+ * 
+ * Debug mode is enabled by setting <code>init-param</code> <code>debug</code> to <code>true</code> in <code>web.xml</code>.
+ * <pre>
+ *   &lt;filter filter-name="ClassLoaderLeakPreventorFilter" filter-class="se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor">
+ *     &lt;init-param>
+ *       &lt;param-name&gt;debug&lt;/param-name&gt;
+ *       &lt;param-value&gt;true&lt;/param-value&gt;
+ *    &lt;/init-param>
+ *  &lt;/filter&gt;
+ * </pre>
+ *
+ * For paranoid mode, just replace <code>&lt;param-name&gt;debug&lt;/param-name&gt;</code> with <code>&lt;param-name&gt;paranoid&lt;/param-name&gt;</code>.
+ * 
+ * <h1>License</h1>
+ * <p>This code is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache 2</a> license,
+ * which allows you to include modified versions of the code in your distributed software, without having to release
+ * your source code.</p>
+ *
+ * <h1>More info</h1> 
+ * <p>For more info, see 
+ * <a href="http://java.jiderhamn.se/2012/03/04/classloader-leaks-vi-this-means-war-leak-prevention-library/">here</a>.
+ * </p>
+ * 
+ * <h1>Design goals</h1>
+ * <p>If you want to help improve this component, you should be aware of the design goals</p>
+ * <p>
+ *   Primary design goal: Zero dependencies. The component should build and run using nothing but the JDK and the 
+ *   Servlet API. Specifically we should <b>not</b> depend on any logging framework, since they are part of the problem.
+ *   We also don't want to use any utility libraries, in order not to impose any further dependencies into any project
+ *   that just wants to get rid of classloader leaks.
+ *   Access to anything outside of the standard JDK (in order to prevent a known leak) should be managed
+ *   with reflection.
+ * </p>
+ * <p>
+ *   Secondary design goal: Keep the runtime component in a single <code>.java</code> file. It should be possible to
+ *   just add this one <code>.java</code> file into your own source tree.
+ * </p>
+ * 
+ * @author Mattias Jiderhamn, 2012
  */
 public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter {
   
@@ -232,7 +299,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // Deregister shutdown hooks - execute them immediately
     deregisterShutdownHooks();
 
-    // TODO: (JCE providers?)
+    // TODO: JCE providers? java.security.Security.addProvider()
     
     // TODO: RMI targets???
     
