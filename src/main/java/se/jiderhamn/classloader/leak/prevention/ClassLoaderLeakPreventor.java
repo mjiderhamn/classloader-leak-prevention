@@ -52,6 +52,55 @@ import javax.xml.parsers.ParserConfigurationException;
  * to make it "outermost".
  *
  * <h1>Configuration</h1>
+ * <h3>Context listener</h3>
+ * The context listener has a number of settings that can be configured with context parameters in <code>web.xml</code>,
+ * i.e.:
+ * 
+ * <pre>
+ *   &lt;context-param&gt;
+ *     &lt;param-name&gt;ClassLoaderLeakPreventor.stopThreads&lt;/param-name&gt;
+ *     &lt;param-value&gt;false&lt;/param-value&gt;
+ *   &lt;/context-param&gt;
+ * </pre>
+ * 
+ * The available settings are
+ * <table border="1">
+ *   <tr>
+ *     <th>Parameter name</th>
+ *     <th>Default value</th>
+ *     <th>Description</th>
+ *   </tr>
+ *   <tr>
+ *     <td><code>ClassLoaderLeakPreventor.stopThreads</code></td>
+ *     <td><code>true</code></td>
+ *     <td>Should threads tied to the web app classloader be forced to stop at application shutdown?</td>
+ *   </tr>
+ *   <tr>
+ *     <td><code>ClassLoaderLeakPreventor.stopTimerThreads</code></td>
+ *     <td><code>true</code></td>
+ *     <td>Should Timer threads tied to the web app classloader be forced to stop at application shutdown?</td>
+ *   </tr>
+ *   <tr>
+ *     <td><code>ClassLoaderLeakPreventor.executeShutdownHooks</td>
+ *     <td><code>true</code></td>
+ *     <td>Should shutdown hooks registered from the application be executed at application shutdown?</td>
+ *   </tr>
+ *   <tr>
+ *     <td><code>ClassLoaderLeakPreventor.threadWaitMs</td>
+ *     <td><code>5000</code> (5 seconds)</td>
+ *     <td>No of milliseconds to wait for threads to finish execution, before stopping them.</td>
+ *   </tr>
+ *   <tr>
+ *     <td><code>ClassLoaderLeakPreventor.shutdownHookWaitMs</code></td>
+ *     <td><code>10000</code> (10 seconds)</td>
+ *     <td>
+ *       No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
+ *       If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
+ *     </td>
+ *   </tr>
+ * </table>
+ * 
+ * 
  * <h3>Filter</h3>
  * <p>For the filter, there are two additional settings that can be used: debug mode and paranoid mode. 
  * Debug mode means that at the end of each request, the filter will look for any uncleared <code>ThreadLocal</code>s
@@ -103,8 +152,35 @@ import javax.xml.parsers.ParserConfigurationException;
  */
 public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter { // TODO: Remove filter, incl doc
   
-  /** No of ms to wait for shutdown hook to finish execution */
-  private static final int TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS = 60 * 1000;
+  /** Default no of milliseconds to wait for threads to finish execution */
+  public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
+
+  /** Default no of milliseconds to wait for shutdown hook to finish execution */
+  public static final int SHUTDOWN_HOOK_WAIT_MS_DEFAULT = 10 * 1000; // 10 seconds
+  
+  ///////////
+  // Settings
+  
+  
+  /** Should threads tied to the web app classloader be forced to stop at application shutdown? */
+  protected boolean stopThreads = true;
+  
+  /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
+  protected boolean stopTimerThreads = true;
+  
+  /** Should shutdown hooks registered from the application be executed at application shutdown? */
+  protected boolean executeShutdownHooks = true;
+
+  /** 
+   * No of milliseconds to wait for threads to finish execution, before stopping them.
+   */
+  protected int threadWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
+
+  /** 
+   * No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
+   * If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
+   */
+  protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Implement javax.servlet.Filter
@@ -192,8 +268,23 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public void contextInitialized(ServletContextEvent servletContextEvent) {
+
+    final ServletContext servletContext = servletContextEvent.getServletContext();
+    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
+    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
+    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
+    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
+    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
-    info(getClass().getName() + " initializing context by loading some known offenders with system classloader");
+    info("Settings for " + this.getClass().getName() + ":");
+    info("  stopThreads = " + stopThreads);
+    info("  stopTimerThreads = " + stopTimerThreads);
+    info("  executeShutdownHooks = " + executeShutdownHooks);
+    info("  threadWaitMs = " + threadWaitMs + " ms");
+    info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
+    
+
+    info("Initializing context by loading some known offenders with system classloader");
     
     // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
     // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
@@ -436,19 +527,24 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     error("Removing shutdown hook: " + displayString);
     Runtime.getRuntime().removeShutdownHook(shutdownHook);
 
-    info("Executing shutdown hook now: " + displayString);
-    // Make sure it's from this web app instance
-    shutdownHook.start(); // Run cleanup immediately
-    try {
-      shutdownHook.join(TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS); // Wait for thread to run TODO: Create setting
-    }
-    catch (InterruptedException e) {
-      // Do nothing
-    }
-    if(shutdownHook.isAlive()) {
-      error("Still running after " + TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS + " ms! " + shutdownHook);
-      error("  Stopping!");
-      shutdownHook.stop(); // TODO: Setting
+    if(executeShutdownHooks) { // Shutdown hooks should be executed
+      
+      info("Executing shutdown hook now: " + displayString);
+      // Make sure it's from this web app instance
+      shutdownHook.start(); // Run cleanup immediately
+      
+      if(shutdownHookWaitMs > 0) { // Wait for shutdown hook to finish
+        try {
+          shutdownHook.join(shutdownHookWaitMs); // Wait for thread to run
+        }
+        catch (InterruptedException e) {
+          // Do nothing
+        }
+        if(shutdownHook.isAlive()) {
+          warn(shutdownHook + "still running after " + shutdownHookWaitMs + " ms - Stopping!");
+          shutdownHook.stop();
+        }
+      }
     }
   }
 
@@ -531,34 +627,58 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         else if(thread.isAlive()) { // Non-system, running in web app
         
           if("java.util.TimerThread".equals(thread.getClass().getName())) {
-            // TODO: Create setting whether to actually stop
-            stopTimerThread(thread);
+            if(stopTimerThreads) {
+              warn("Stopping Timer thread running in classloader.");
+              stopTimerThread(thread);
+            }
+            else {
+              info("Timer thread is running in classloader, but will not be stopped");
+            }
           }
           else {
             
             // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
             if(workerClass != null && workerClass.isInstance(target)) {
-              // TODO: Make setting?
-              try {
-                // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
-                final Field workerExecutor = findField(workerClass, "this$0");
-                final ThreadPoolExecutor executor = getFieldValue(workerExecutor, target);
-                executor.shutdownNow();
+              if(stopThreads) {
+                warn("Shutting down " + ThreadPoolExecutor.class.getName() + " running within the classloader.");
+                try {
+                  // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
+                  final Field workerExecutor = findField(workerClass, "this$0");
+                  final ThreadPoolExecutor executor = getFieldValue(workerExecutor, target);
+                  executor.shutdownNow();
+                }
+                catch (Exception ex) {
+                  error(ex);
+                }
               }
-              catch (Exception ex) {
-                error(ex);
-              }
+              else 
+                info(ThreadPoolExecutor.class.getName() + " running within the classloader will not be shut down.");
             }
 
             final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-            error("Thread " + displayString + " is still running in web app");
+            
+            if(stopThreads) {
+              final String waitString = (threadWaitMs > 0) ? "after " + threadWaitMs + " ms " : "";
+              warn("Stopping Thread " + displayString + " running in web app " + waitString);
 
-            // TODO: Make setting for stopping
-            info("Stopping Thread " + displayString);
-            // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
-            // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
-            // TODO: Give it some time first?
-            thread.stop();
+              if(threadWaitMs > 0) {
+                try {
+                  thread.join(threadWaitMs); // Wait for thread to run
+                }
+                catch (InterruptedException e) {
+                  // Do nothing
+                }
+              }
+
+              // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
+              // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
+              if(thread.isAlive())
+                thread.stop();
+            }
+            else {
+              warn("Thread " + displayString + " is still running in web app");
+            }
+              
           }
         }
       }
@@ -566,7 +686,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   protected void stopTimerThread(Thread thread) {
-    // Seems it is not possible to access Timer of TimerThread, so we need to mimick Timer.cancel()
+    // Seems it is not possible to access Timer of TimerThread, so we need to mimic Timer.cancel()
     /** 
     try {
       Timer timer = (Timer) findField(thread.getClass(), "this$0").get(thread); // This does not work!
@@ -584,7 +704,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       final Method clear = queue.getClass().getDeclaredMethod("clear");
       clear.setAccessible(true);
 
-      // Do that java.util.Timer.cancel() does
+      // Do what java.util.Timer.cancel() does
       //noinspection SynchronizationOnLocalVariableOrMethodParameter
       synchronized (queue) {
         newTasksMayBeScheduled.set(thread, false);
@@ -916,6 +1036,20 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         }
       }
     }
+  }
+
+  /** Parse init parameter for integer value, returning default if not found or invalid */
+  private static int getIntInitParameter(ServletContext servletContext, String parameterName, int defaultValue) {
+    final String parameterString = servletContext.getInitParameter(parameterName);
+    if(parameterString != null && parameterString.trim().length() > 0) {
+      try {
+        return Integer.parseInt(parameterString);
+      }
+      catch (NumberFormatException e) {
+        // Do nothing, return default value
+      }
+    }
+    return defaultValue;
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
