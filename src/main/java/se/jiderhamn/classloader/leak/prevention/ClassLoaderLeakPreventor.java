@@ -15,7 +15,6 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
-import java.io.IOException;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -41,18 +40,9 @@ import javax.xml.parsers.ParserConfigurationException;
  *  &lt;/listener&gt; 
  * </pre>
  * 
- * <p>For improved protection against uncleared <code>ThreadLocal</code>s, configure also as a filter:</p>
- * 
- * <pre>
- *  &lt;filter filter-name="ClassLoaderLeakPreventorFilter" filter-class="se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor" /&gt;
- *  &lt;filter-mapping filter-name="ClassLoaderLeakPreventorFilter" url-pattern="/*" /&gt;
- * </pre>
- * 
- * You should usually declare this <code>listener</code>/<code>filter</code> before any other listeners/filters,
- * to make it "outermost".
+ * You should usually declare this <code>listener</code> before any other listeners, to make it "outermost".
  *
  * <h1>Configuration</h1>
- * <h3>Context listener</h3>
  * The context listener has a number of settings that can be configured with context parameters in <code>web.xml</code>,
  * i.e.:
  * 
@@ -101,28 +91,6 @@ import javax.xml.parsers.ParserConfigurationException;
  * </table>
  * 
  * 
- * <h3>Filter</h3>
- * <p>For the filter, there are two additional settings that can be used: debug mode and paranoid mode. 
- * Debug mode means that at the end of each request, the filter will look for any uncleared <code>ThreadLocal</code>s
- * (in addition to it's list of known offenders), and issue a warning for each one found. This can be useful to find 
- * out when/where a <code>ThreadLocal</code> is added. Paranoid mode will not only warn, but will also remove the 
- * uncleared <code>ThreadLocal</code>. Both of these modes affect the performance of your web application and it is not 
- * recommended to use them under normal operation, but only for debugging purposes. Once the leak is located, it should 
- * be fixed or - in case it is out of your control - added to the list of know offenders in the 
- * filter <code>init()</code> method.</p>
- * 
- * Debug mode is enabled by setting <code>init-param</code> <code>debug</code> to <code>true</code> in <code>web.xml</code>.
- * <pre>
- *   &lt;filter filter-name="ClassLoaderLeakPreventorFilter" filter-class="se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor">
- *     &lt;init-param>
- *       &lt;param-name&gt;debug&lt;/param-name&gt;
- *       &lt;param-value&gt;true&lt;/param-value&gt;
- *    &lt;/init-param>
- *  &lt;/filter&gt;
- * </pre>
- *
- * For paranoid mode, just replace <code>&lt;param-name&gt;debug&lt;/param-name&gt;</code> with <code>&lt;param-name&gt;paranoid&lt;/param-name&gt;</code>.
- * 
  * <h1>License</h1>
  * <p>This code is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache 2</a> license,
  * which allows you to include modified versions of the code in your distributed software, without having to release
@@ -150,7 +118,7 @@ import javax.xml.parsers.ParserConfigurationException;
  * 
  * @author Mattias Jiderhamn, 2012
  */
-public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter { // TODO: Remove filter, incl doc
+public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener {
   
   /** Default no of milliseconds to wait for threads to finish execution */
   public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
@@ -182,25 +150,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    */
   protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Implement javax.servlet.Filter
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
-  /** Known offending (uncleared) ThreadLocals */
-  private ThreadLocal[] offendingThreadLocals;
-  
-  /**
-   * When filter is set to debug mode, it will look for uncleared ThreadLocals when processing each request and
-   * if found, will print them using warning level.
-   */
-  protected boolean filterDebugMode = false; 
-
-  /**
-   * When filter is set to paranoid mode, it will look for uncleared ThreadLocals when processing each request and
-   * if found, will clear them.
-   */
-  protected boolean filterParanoidMode = false;
-
   protected final Field java_lang_Thread_threadLocals;
 
   protected final Field java_lang_Thread_inheritableThreadLocals;
@@ -224,44 +173,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     if(java_lang_ThreadLocal$ThreadLocalMap_table == null)
       error("java.lang.ThreadLocal$ThreadLocalMap.table not found; something is seriously wrong!");
   }
-
-  public void init(FilterConfig filterConfig) throws ServletException {
-    filterDebugMode = "true".equals(filterConfig.getInitParameter("debug"));
-    filterParanoidMode = "true".equals(filterConfig.getInitParameter("paranoid"));
-    
-    List<ThreadLocal> threadLocals = new ArrayList<ThreadLocal>();
-    Object axisDocumentBuilder = getStaticFieldValue("org.apache.axis.utils.XMLUtils", "documentBuilder");
-    if(axisDocumentBuilder instanceof ThreadLocal) {
-      threadLocals.add((ThreadLocal)axisDocumentBuilder);
-    }
-    
-    this.offendingThreadLocals = threadLocals.toArray(new ThreadLocal[threadLocals.size()]);
-  }
-
-  /** In the doFilter() method we have a chance to clean up the thread before it is returned to the thread pool */
-  public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
-    try {
-      filterChain.doFilter(servletRequest, servletResponse);
-    }
-    finally {
-      // Clean up known offender ThreadLocals
-      for(ThreadLocal offendingThreadLocal : offendingThreadLocals) {
-        offendingThreadLocal.remove(); // Remove offender from current thread
-      }
-      
-      if(filterParanoidMode) {
-        forEachThreadLocalInCurrentThread(new ClearingThreadLocalProcessor());
-      }
-      else if(filterDebugMode) {
-        forEachThreadLocalInCurrentThread(new WarningThreadLocalProcessor());
-      }
-    }
-  }
-
-  public void destroy() {
-    offendingThreadLocals = null; // Make available for Garbage Collector
-  }
-
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Implement javax.servlet.ServletContextListener 
