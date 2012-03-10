@@ -310,7 +310,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     deregisterSecurityProviders();
     
-    // TODO: RMI targets
+    deregisterRmiTargets();
     
     clearThreadLocalsOfAllThreads();
     
@@ -450,6 +450,39 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     warn("Removing security providers loaded in web app: " + providersToRemove);
     for(String providerName : providersToRemove) {
       java.security.Security.removeProvider(providerName);
+    }
+  }
+
+  /** This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesRmiTargets() */
+  protected void deregisterRmiTargets() {
+    try {
+      final Class objectTableClass = findClass("sun.rmi.transport.ObjectTable");
+      if(objectTableClass != null) {
+        clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "objTable"));
+        clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "implTable"));
+      }
+    }
+    catch (Exception ex) {
+      error(ex);
+    }
+  }
+  
+  /** Iterate RMI Targets Map and remove entries loaded by web app classloader */
+  protected void clearRmiTargetsMap(Map<?, ?> rmiTargetsMap) {
+    try {
+      final Field cclField = findFieldOfClass("sun.rmi.transport.Target", "ccl");
+      debug("Looping " + rmiTargetsMap.size() + " RMI Targets to find leaks");
+      for(Iterator<?> iter = rmiTargetsMap.values().iterator(); iter.hasNext(); ) {
+        Object target = iter.next(); // sun.rmi.transport.Target
+        ClassLoader ccl = (ClassLoader) cclField.get(target);
+        if(isWebAppClassLoaderOrChild(ccl)) {
+          warn("Removing RMI Target: " + target);
+          iter.remove();
+        }
+      }
+    }
+    catch (Exception ex) {
+      error(ex);
     }
   }
 
