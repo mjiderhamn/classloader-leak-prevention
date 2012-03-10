@@ -101,7 +101,7 @@ import javax.xml.parsers.ParserConfigurationException;
  * 
  * @author Mattias Jiderhamn, 2012
  */
-public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter {
+public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener, javax.servlet.Filter { // TODO: Remove filter, incl doc
   
   /** No of ms to wait for shutdown hook to finish execution */
   private static final int TIME_TO_WAIT_FOR_SHUTDOWN_HOOKS_MS = 60 * 1000;
@@ -302,6 +302,29 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     info(getClass().getName() + " shutting down context by removing known leaks");
     
+    //////////////////
+    // Fix known leaks
+    //////////////////
+    
+    java.beans.Introspector.flushCaches(); // Clear cache of strong references
+    
+    // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
+
+    fixBeanValidationApiLeak();
+
+    fixGeoToolsLeak();
+    
+    // Can we do anything about Google Guice ?
+    
+    // Can we do anything about Groovy http://jira.codehaus.org/browse/GROOVY-4154 ?
+
+    clearIntrospectionUtilsCache();
+
+    // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
+
+    ////////////////////
+    // Fix generic leaks
+    
     // Deregister JDBC drivers contained in web application
     deregisterJdbcDrivers();
     
@@ -349,16 +372,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       error(ex);
     }
     
-    //////////////////
-    // Fix known leaks
-    //////////////////
-    
-    java.beans.Introspector.flushCaches(); // Clear cache of strong references
-    
-    fixBeanValidationApiLeak();
-    
-    // TODO More known offenders
-
     // Release this classloader from Apache Commons Logging (ACL) by calling
     //   LogFactory.release(this.getClass().getClassLoader());
     // Use reflection in case ACL is not present.
@@ -608,6 +621,46 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
   }
   
+  /** Shutdown GeoTools cleaner thread as of http://jira.codehaus.org/browse/GEOT-2742 */
+  protected void fixGeoToolsLeak() {
+    final Class weakCollectionCleanerClass = findClass("org.geotools.util.WeakCollectionCleaner");
+    if(weakCollectionCleanerClass != null) {
+      try {
+        weakCollectionCleanerClass.getMethod("exit").invoke(null);
+      }
+      catch (Exception ex) {
+        error(ex);
+      }
+    }
+  }
+
+  /** Clear IntrospectionUtils caches of Tomcat and Apache Commons Modeler */
+  protected void clearIntrospectionUtilsCache() {
+    // Tomcat
+    final Class tomcatIntrospectionUtils = findClass("org.apache.tomcat.util.IntrospectionUtils");
+    if(tomcatIntrospectionUtils != null) {
+      try {
+        tomcatIntrospectionUtils.getMethod("clear").invoke(null);
+      }
+      catch (Exception ex) {
+        error(ex);
+      }
+    }
+
+    // Apache Commons Modeler
+    final Class modelIntrospectionUtils = findClass("org.apache.commons.modeler.util.IntrospectionUtils");
+    if(modelIntrospectionUtils != null && ! isWebAppClassLoaderOrChild(modelIntrospectionUtils.getClassLoader())) { // Loaded outside web app
+      try {
+        modelIntrospectionUtils.getMethod("clear").invoke(null);
+      }
+      catch (Exception ex) {
+        warn("org.apache.commons.modeler.util.IntrospectionUtils needs to be cleared but there was an error, " +
+            "consider upgrading Apache Commons Modeler");
+        error(ex);
+      }
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
