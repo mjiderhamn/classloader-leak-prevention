@@ -634,7 +634,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  public static void fixBeanValidationApiLeak() {
+  public void fixBeanValidationApiLeak() {
     Class offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
     if(offendingClass != null) { // Class is present on class path
       Field offendingField = findField(offendingClass, "providersPerClassloader");
@@ -722,17 +722,17 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
        isWebAppClassLoaderOrChild(thread.getContextClassLoader()); // Running in web application
   }
   
-  protected static <E> E getStaticFieldValue(Class clazz, String fieldName) {
+  protected <E> E getStaticFieldValue(Class clazz, String fieldName) {
     Field staticField = findField(clazz, fieldName);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
 
-  protected static <E> E getStaticFieldValue(String className, String fieldName) {
+  protected <E> E getStaticFieldValue(String className, String fieldName) {
     Field staticField = findFieldOfClass(className, fieldName);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
   
-  protected static Field findFieldOfClass(String className, String fieldName) {
+  protected Field findFieldOfClass(String className, String fieldName) {
     Class clazz = findClass(className);
     if(clazz != null) {
       return findField(clazz, fieldName);
@@ -741,7 +741,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       return null;
   }
   
-  protected static Class findClass(String className) {
+  protected Class findClass(String className) {
     try {
       return Class.forName(className);
     }
@@ -759,7 +759,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  protected static Field findField(Class clazz, String fieldName) {
+  protected Field findField(Class clazz, String fieldName) {
     if(clazz == null)
       return null;
 
@@ -778,7 +778,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  protected static <T> T getStaticFieldValue(Field field) {
+  protected <T> T getStaticFieldValue(Field field) {
     try {
       return (T) field.get(null);
     }
@@ -789,7 +789,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  protected static <T> T getFieldValue(Field field, Object obj) {
+  protected <T> T getFieldValue(Field field, Object obj) {
     try {
       return (T) field.get(obj);
     }
@@ -950,7 +950,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   /** Parse init parameter for integer value, returning default if not found or invalid */
-  private static int getIntInitParameter(ServletContext servletContext, String parameterName, int defaultValue) {
+  protected static int getIntInitParameter(ServletContext servletContext, String parameterName, int defaultValue) {
     final String parameterString = servletContext.getInitParameter(parameterName);
     if(parameterString != null && parameterString.trim().length() > 0) {
       try {
@@ -972,31 +972,31 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    * Feel free however to subclass or fork and use a log framework, in case you think you know what you're doing.
    */
   
-  protected static String getLogPrefix() {
+  protected String getLogPrefix() {
     return ClassLoaderLeakPreventor.class.getSimpleName() + ": ";
   }
   
-  protected static void debug(String s) {
+  protected void debug(String s) {
     System.out.println(getLogPrefix() + s);
   } 
 
-  protected static void info(String s) {
+  protected void info(String s) {
     System.out.println(getLogPrefix() + s);
   } 
 
-  protected static void warn(String s) {
+  protected void warn(String s) {
     System.err.println(getLogPrefix() + s);
   } 
 
-  protected static void warn(Throwable t) {
+  protected void warn(Throwable t) {
     t.printStackTrace(System.err);
   } 
 
-  protected static void error(String s) {
+  protected void error(String s) {
     System.err.println(getLogPrefix() + s);
   } 
 
-  protected static void error(Throwable t) {
+  protected void error(Throwable t) {
     t.printStackTrace(System.err);
   } 
 }
