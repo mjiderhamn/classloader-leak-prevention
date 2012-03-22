@@ -179,7 +179,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public void contextInitialized(ServletContextEvent servletContextEvent) {
-
     final ServletContext servletContext = servletContextEvent.getServletContext();
     stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
     stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
@@ -187,7 +186,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
     shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
-    info("Settings for " + this.getClass().getName() + ":");
+    info("Settings for " + this.getClass().getName() + " (CL: 0x" +
+         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
     info("  stopThreads = " + stopThreads);
     info("  stopTimerThreads = " + stopTimerThreads);
     info("  executeShutdownHooks = " + executeShutdownHooks);
@@ -302,7 +302,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
     
-    info(getClass().getName() + " shutting down context by removing known leaks");
+    info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" + 
+         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + ")");
     
     //////////////////
     // Fix known leaks
@@ -345,7 +346,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       try { // First try Java 1.6 method
         final Method clearCache16 = ResourceBundle.class.getMethod("clearCache", ClassLoader.class);
         debug("Since Java 1.6+ is used, we can call " + clearCache16);
-        clearCache16.invoke(null, ClassLoaderLeakPreventor.class.getClassLoader());
+        clearCache16.invoke(null, getWebApplicationClassLoader());
       }
       catch (NoSuchMethodException e) {
         // Not Java 1.6+, we have to clear manually
@@ -375,7 +376,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
     
     // Release this classloader from Apache Commons Logging (ACL) by calling
-    //   LogFactory.release(this.getClass().getClassLoader());
+    //   LogFactory.release(getCurrentClassLoader());
     // Use reflection in case ACL is not present.
     // Do this last, in case other shutdown procedures want to log something.
     
@@ -384,7 +385,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       info("Releasing web app classloader from Apache Commons Logging");
       try {
         logFactory.getMethod("release", java.lang.ClassLoader.class)
-            .invoke(null, ClassLoaderLeakPreventor.class.getClassLoader());
+            .invoke(null, getWebApplicationClassLoader());
       }
       catch (Exception ex) {
         error(ex);
@@ -531,7 +532,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
             "RMI Runtime".equals(thread.getThreadGroup().getName()))) { // RMI thread (honestly, just copied from Tomcat)
           
           if("Keep-Alive-Timer".equals(thread.getName())) {
-            thread.setContextClassLoader(ClassLoaderLeakPreventor.class.getClassLoader().getParent());
+            thread.setContextClassLoader(getWebApplicationClassLoader().getParent());
             debug("Changed contextClassLoader of HTTP keep alive thread");
           }
         }
@@ -644,7 +645,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
           //noinspection SynchronizationOnLocalVariableOrMethodParameter
           synchronized (providersPerClassloader) {
             // Fix the leak!
-            ((Map)providersPerClassloader).remove(ClassLoaderLeakPreventor.class.getClassLoader());
+            ((Map)providersPerClassloader).remove(getWebApplicationClassLoader());
           }
         }
       }
@@ -696,6 +697,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
+  protected ClassLoader getWebApplicationClassLoader() {
+    return ClassLoaderLeakPreventor.class.getClassLoader();
+    // Alternative return Thread.currentThread().getContextClassLoader();
+  }
+  
   /** Test if provided object is loaded with web application classloader */
   protected boolean isLoadedInWebApplication(Object o) {
     return o != null && 
@@ -704,7 +710,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
   protected boolean isWebAppClassLoaderOrChild(ClassLoader cl) {
-    final ClassLoader webAppCL = ClassLoaderLeakPreventor.class.getClassLoader();
+    final ClassLoader webAppCL = getWebApplicationClassLoader();
     // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
 
     while(cl != null) {
