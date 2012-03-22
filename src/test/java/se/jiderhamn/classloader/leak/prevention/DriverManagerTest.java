@@ -6,7 +6,7 @@ import se.jiderhamn.JUnitClassloaderRunner;
 import se.jiderhamn.LeakPreventor;
 
 /**
- * TODO:  
+ * Verify that ClassLoaderLeakPreventor can deregister JDBC drivers  
  * 
  * @author Mattias Jiderhamn
  */
