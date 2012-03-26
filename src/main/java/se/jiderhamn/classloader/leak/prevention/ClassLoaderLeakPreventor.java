@@ -301,7 +301,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
-    
+
+    final boolean jvmIsShuttingDown = isJvmShuttingDown();
+    if(jvmIsShuttingDown) {
+      info("JVM is shutting down - skip cleanup");
+      return; // Don't do anything more
+    }
+
     info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" + 
          Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + ")");
     
@@ -468,9 +474,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         providersToRemove.add(provider.getName());
       }
     }
-    warn("Removing security providers loaded in web app: " + providersToRemove);
-    for(String providerName : providersToRemove) {
-      java.security.Security.removeProvider(providerName);
+    
+    if(! providersToRemove.isEmpty()) {
+      warn("Removing security providers loaded in web app: " + providersToRemove);
+      for(String providerName : providersToRemove) {
+        java.security.Security.removeProvider(providerName);
+      }
     }
   }
 
@@ -803,6 +812,21 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       warn(ex);
       // Silently ignore
       return null;
+    }
+  }
+  
+  /** Is the JVM currently shutting down? */
+  protected boolean isJvmShuttingDown() {
+    try {
+      final Thread dummy = new Thread(); // Will never be started
+      Runtime.getRuntime().removeShutdownHook(dummy);
+      return false;
+    }
+    catch (IllegalStateException isex) {
+      return true; // Shutting down
+    }
+    catch (Throwable t) { // Any other Exception, assume we are not shutting down
+      return false;
     }
   }
 
