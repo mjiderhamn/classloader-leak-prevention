@@ -430,10 +430,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // We will not remove known shutdown hooks, since loading the owning class of the hook,
     // may register the hook if previously unregistered 
     Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) getStaticFieldValue("java.lang.ApplicationShutdownHooks", "hooks");
-    // Iterate copy to avoid ConcurrentModificationException
-    for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
-      if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
-        removeShutdownHook(shutdownHook);
+    if(shutdownHooks != null) { // Could be null during JVM shutdown, which we already avoid, but be extra precautious
+      // Iterate copy to avoid ConcurrentModificationException
+      for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
+        if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
+          removeShutdownHook(shutdownHook);
+        }
       }
     }
   }
