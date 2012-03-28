@@ -113,7 +113,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
-          assertNotNull("ClassLoader has been garbage collected, while test is expected to leak " + weak.get(), redefiningClassLoader);
+          assertNotNull("ClassLoader has been garbage collected, while test is expected to leak", redefiningClassLoader);
 
           if(redefiningClassLoader != null && // Always true, otherwise assertion failure above
              preventorClass != null) {

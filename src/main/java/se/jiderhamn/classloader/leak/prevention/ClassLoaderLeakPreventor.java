@@ -15,6 +15,7 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
+import java.lang.management.ManagementFactory;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -27,6 +28,10 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 import javax.servlet.*;
 import javax.xml.parsers.ParserConfigurationException;
 
@@ -338,6 +343,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // Deregister JDBC drivers contained in web application
     deregisterJdbcDrivers();
     
+    // Unregister MBeans loaded by the web application class loader
+    unregisterMBeans();
+    
     // Deregister shutdown hooks - execute them immediately
     deregisterShutdownHooks();
 
@@ -425,6 +433,29 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       catch (SQLException e) {
         error(e);
       }
+    }
+  }
+
+  /** Unregister MBeans loaded by the web application class loader */
+  protected void unregisterMBeans() {
+    try {
+      MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+      final Set<ObjectName> allMBeanNames = mBeanServer.queryNames(new ObjectName("*:*"), null);
+      for(ObjectName objectName : allMBeanNames) {
+        try {
+          final ClassLoader mBeanClassLoader = mBeanServer.getClassLoaderFor(objectName);
+          if(isWebAppClassLoaderOrChild(mBeanClassLoader)) { // MBean loaded in web application
+            warn("MBean '" + objectName + "' was loaded in web application; unregistering");
+            mBeanServer.unregisterMBean(objectName);
+          }
+        }
+        catch(Exception e) { // MBeanRegistrationException / InstanceNotFoundException
+          error(e);
+        }
+      }
+    }
+    catch (Exception e) { // MalformedObjectNameException
+      error(e);
     }
   }
 
