@@ -20,6 +20,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.Authenticator;
 import java.net.URL;
 import java.sql.Driver;
 import java.sql.DriverManager;
@@ -342,6 +343,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     deregisterSecurityProviders();
     
+    clearDefaultAuthenticator();
+    
     deregisterRmiTargets();
     
     clearThreadLocalsOfAllThreads();
@@ -482,6 +485,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       for(String providerName : providersToRemove) {
         java.security.Security.removeProvider(providerName);
       }
+    }
+  }
+  
+  /** Clear the default java.net.Authenticator (in case current one is loaded in web app) */
+  protected void clearDefaultAuthenticator() {
+    final Authenticator defaultAuthenticator = getStaticFieldValue(Authenticator.class, "theAuthenticator");
+    if(defaultAuthenticator == null || // Can both mean not set, or error retrieving, so unset anyway to be safe 
+       isLoadedInWebApplication(defaultAuthenticator)) {
+      Authenticator.setDefault(null);
     }
   }
 
