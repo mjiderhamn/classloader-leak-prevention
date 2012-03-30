@@ -142,7 +142,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
                   "despite running the leak preventor " + leakPreventorName, weak.get());
             }
             catch (Exception e) {
-              throw new RuntimeException("Leak prevention class" + preventorClass + " could not be used!", e);
+              throw new RuntimeException("Leak prevention class " + preventorClass.getName() + " could not be used!", e);
             }
             finally {
               redefiningClassLoader = null;

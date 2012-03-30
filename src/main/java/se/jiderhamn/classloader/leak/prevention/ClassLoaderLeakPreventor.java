@@ -28,8 +28,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
-import javax.management.InstanceNotFoundException;
-import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.*;
@@ -324,6 +322,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     java.beans.Introspector.flushCaches(); // Clear cache of strong references
     
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
+    
+    clearBeanELResolverCache();
 
     fixBeanValidationApiLeak();
 
@@ -689,6 +689,40 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+  /** Clean the cache of BeanELResolver */
+  protected void clearBeanELResolverCache() {
+    final Class beanElResolverClass = findClass("javax.el.BeanELResolver");
+    if(beanElResolverClass != null) {
+      boolean cleared = false;
+      try {
+        final Method purgeBeanClasses = beanElResolverClass.getDeclaredMethod("purgeBeanClasses", ClassLoader.class);
+        purgeBeanClasses.setAccessible(true);
+        purgeBeanClasses.invoke(beanElResolverClass.newInstance(), getWebApplicationClassLoader());
+        cleared = true;
+      }
+      catch (NoSuchMethodException e) {
+        // Version of javax.el probably > 2.2; no real need to clear
+      }
+      catch (Exception e) {
+        error(e);
+      }
+      
+      if(! cleared) {
+        // Fallback, if purgeBeanClasses() could not be called
+        final Field propertiesField = findField(beanElResolverClass, "properties");
+        if(propertiesField != null) {
+          try {
+            final Map properties = (Map) propertiesField.get(null);
+            properties.clear();
+          }
+          catch (Exception e) {
+            error(e);
+          }
+        }
+      }
+    }
+  }
+  
   public void fixBeanValidationApiLeak() {
     Class offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
     if(offendingClass != null) { // Class is present on class path
