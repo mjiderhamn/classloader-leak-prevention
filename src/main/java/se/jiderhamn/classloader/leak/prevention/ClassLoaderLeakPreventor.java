@@ -15,6 +15,7 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
+import java.beans.PropertyEditorManager;
 import java.lang.management.ManagementFactory;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
@@ -348,6 +349,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     // Deregister shutdown hooks - execute them immediately
     deregisterShutdownHooks();
+    
+    deregisterPropertyEditors();
 
     deregisterSecurityProviders();
     
@@ -502,6 +505,39 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
 
+  /** Deregister custom property editors */
+  protected void deregisterPropertyEditors() {
+    final Field registryField = findField(PropertyEditorManager.class, "registry");
+    if(registryField == null) {
+      error("Internal registry of " + PropertyEditorManager.class.getName() + " not found");
+    }
+    else {
+      try {
+        synchronized (PropertyEditorManager.class) {
+          final Map<Class<?>, Class<?>> registry = (Map) registryField.get(null);
+          if(registry != null) { // Initialized
+            final Set<Class> toRemove = new HashSet<Class>();
+            
+            for(Map.Entry<Class<?>, Class<?>> entry : registry.entrySet()) {
+              if(isLoadedByWebApplication(entry.getKey()) ||
+                 isLoadedByWebApplication(entry.getValue())) { // More likely
+                toRemove.add(entry.getKey());
+              }
+            }
+            
+            for(Class clazz : toRemove) {
+              warn("Property editor for type " + clazz +  " = " + registry.get(clazz) + " needs to be deregistered");
+              PropertyEditorManager.registerEditor(clazz, null); // Deregister
+            }
+          }
+        }
+      }
+      catch (Exception e) { // Such as IllegalAccessException
+        error(e);
+      }
+    }
+  }
+  
   /** Deregister custom security providers */
   protected void deregisterSecurityProviders() {
     final Set<String> providersToRemove = new HashSet<String>();
@@ -792,8 +828,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Test if provided object is loaded with web application classloader */
   protected boolean isLoadedInWebApplication(Object o) {
-    return o != null && 
-        isWebAppClassLoaderOrChild(o.getClass().getClassLoader());
+    return o != null && isLoadedByWebApplication(o.getClass());
+  }
+
+  /** Test if provided class is loaded with web application classloader */
+  protected boolean isLoadedByWebApplication(Class clazz) {
+    return clazz != null && isWebAppClassLoaderOrChild(clazz.getClassLoader());
   }
 
   /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
