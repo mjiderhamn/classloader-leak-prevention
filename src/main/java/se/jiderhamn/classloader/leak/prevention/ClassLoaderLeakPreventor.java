@@ -155,6 +155,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    */
   protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
+  /** Is it possible, that we are running under JBoss? */
+  private boolean mayBeJBoss = false;
+
   protected final Field java_lang_Thread_threadLocals;
 
   protected final Field java_lang_Thread_inheritableThreadLocals;
@@ -199,12 +202,21 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     info("  threadWaitMs = " + threadWaitMs + " ms");
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
+    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+
+    try {
+      // If package org.jboss is found, we may be running under JBoss
+      mayBeJBoss = (contextClassLoader.getResource("org/jboss") != null);
+    }
+    catch(Exception ex) {
+      // Do nothing
+    }
+    
 
     info("Initializing context by loading some known offenders with system classloader");
     
     // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
     // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
-    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
     try {
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
       // the current classloader to be available for gerbage collection
@@ -276,7 +288,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         Class.forName("sun.java2d.Disposer"); // Will start a Thread
       }
       catch (ClassNotFoundException cnfex) {
-        if(isSunJRE)
+        if(isSunJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
           error(cnfex);
       }
 
@@ -799,7 +811,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         tomcatIntrospectionUtils.getMethod("clear").invoke(null);
       }
       catch (Exception ex) {
-        error(ex);
+        if(! mayBeJBoss) // JBoss includes this class, but no cache and no clear() method
+          error(ex);
       }
     }
 
