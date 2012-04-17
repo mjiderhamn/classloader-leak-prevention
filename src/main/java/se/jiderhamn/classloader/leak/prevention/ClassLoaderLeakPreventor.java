@@ -32,7 +32,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.*;
-import javax.xml.parsers.ParserConfigurationException;
 
 /**
  * This class helps prevent classloader leaks.
@@ -251,8 +250,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       try {
         javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
       }
-      catch (ParserConfigurationException pcex) {
-        error(pcex);
+      catch (Exception ex) { // Example: ParserConfigurationException
+        error(ex);
       }
 
       try {
