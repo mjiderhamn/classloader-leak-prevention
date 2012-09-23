@@ -373,6 +373,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     stopThreads();
 
+    unsetCachedKeepAliveTimer();
+    
     try {
       try { // First try Java 1.6 method
         final Method clearCache16 = ResourceBundle.class.getMethod("clearCache", ClassLoader.class);
@@ -405,6 +407,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     catch(Exception ex) {
       error(ex);
     }
+    
+    // (CacheKey of java.util.ResourceBundle.NONEXISTENT_BUNDLE will point to first referring classloader...)
     
     // Release this classloader from Apache Commons Logging (ACL) by calling
     //   LogFactory.release(getCurrentClassLoader());
@@ -732,6 +736,23 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
+  /** 
+   * Since Keep-Alive-Timer thread may have terminated, but still be referenced, we need to make sure it does not
+   * reference this classloader.
+   */
+  protected void unsetCachedKeepAliveTimer() {
+    Object keepAliveCache = getStaticFieldValue("sun.net.www.http.HttpClient", "kac");
+    if(keepAliveCache != null) {
+      final Thread keepAliveTimer = getFieldValue(keepAliveCache, "keepAliveTimer");
+      if(keepAliveTimer != null) {
+        if(isWebAppClassLoaderOrChild(keepAliveTimer.getContextClassLoader())) {
+          keepAliveTimer.setContextClassLoader(getWebApplicationClassLoader().getParent());
+          error("ContextClassLoader of sun.net.www.http.HttpClient cached Keep-Alive-Timer set to parent instead");
+        }
+      }
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -933,6 +954,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Silently ignore
       return null;
     }
+  }
+  
+  protected <T> T getFieldValue(Object obj, String fieldName) {
+    final Field field = findField(obj.getClass(), fieldName);
+    return getFieldValue(field, obj);
   }
   
   protected <T> T getFieldValue(Field field, Object obj) {
