@@ -958,7 +958,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   protected <T> T getFieldValue(Object obj, String fieldName) {
     final Field field = findField(obj.getClass(), fieldName);
-    return getFieldValue(field, obj);
+    return (T) getFieldValue(field, obj);
   }
   
   protected <T> T getFieldValue(Field field, Object obj) {
