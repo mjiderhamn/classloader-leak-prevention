@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <artifactId>classloader-leak-prevention</artifactId>
   <groupId>se.jiderhamn</groupId>
-  <version>1.4.1-SNAPSHOT</version>
+  <version>1.5.0</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak prevention</name>
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>

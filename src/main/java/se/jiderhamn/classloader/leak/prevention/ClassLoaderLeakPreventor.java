@@ -253,6 +253,14 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       catch (Exception ex) { // Example: ParserConfigurationException
         error(ex);
       }
+      
+      try {
+        Class.forName("javax.xml.bind.DatatypeConverterImpl"); // Since JDK 1.6. May throw java.lang.Error
+      }
+      catch (ClassNotFoundException e) {
+        // Do nothing
+      }
+      
 
       try {
         Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
