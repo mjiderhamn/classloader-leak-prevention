@@ -1,12 +1,24 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.sonatype.oss</groupId>
+    <artifactId>oss-parent</artifactId>
+    <version>7</version>
+  </parent>
+  <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
   <artifactId>classloader-leak-prevention</artifactId>
-  <groupId>se.jiderhamn</groupId>
-  <version>1.5.0</version>
+  <version>1.5.1-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak prevention</name>
+  <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>
+  
+  <scm>
+    <connection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</connection>
+    <developerConnection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</developerConnection>
+    <url>https://github.com/mjiderhamn/classloader-leak-prevention.git</url>
+  </scm>
 
   <licenses>
     <license>
@@ -96,4 +108,35 @@
       <version>2.2.1-b04</version>
     </dependency>    
   </dependencies>
+
+  <!-- Configure GPG signing; see https://docs.sonatype.org/display/Repository/How+To+Generate+PGP+Signatures+With+Maven -->
+  <profiles>
+    <profile>
+      <id>release-sign-artifacts</id>
+      <activation>
+        <property>
+          <name>performRelease</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>1.1</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
