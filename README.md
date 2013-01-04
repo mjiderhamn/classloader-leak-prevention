@@ -12,6 +12,17 @@ It makes sense to keep this listener "outermost" (initializing first, destroying
 
 To learn more about classloader leaks, their causes, types, ways to find them and known offenders, see blog series here: http://java.jiderhamn.se/category/classloader-leaks/
 
+## Maven
+The library is available in Maven Central with the following details:
+
+```xml
+<dependency>
+  <groupId>se.jiderhamn</groupId>
+  <artifactId>classloader-leak-prevention</artifactId>
+  <version>1.5.2</version>
+</dependency>
+```
+
 ## Configuration
 The context listener has a number of settings that can be configured with context parameters in <code>web.xml</code>:
  
