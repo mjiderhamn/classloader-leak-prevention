@@ -380,6 +380,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     clearThreadLocalsOfAllThreads();
     
     stopThreads();
+    
+    destroyThreadGroups();
 
     unsetCachedKeepAliveTimer();
     
@@ -738,6 +740,54 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       }
       
       // We shouldn't need to join() here, thread will finish soon enough
+    }
+    catch (Exception ex) {
+      error(ex);
+    }
+  }
+  
+  /** Destroy any ThreadGroups that are loaded by the application classloader */
+  public void destroyThreadGroups() {
+    try {
+      ThreadGroup systemThreadGroup = Thread.currentThread().getThreadGroup();
+      while(systemThreadGroup.getParent() != null) {
+        systemThreadGroup = systemThreadGroup.getParent();
+      }
+      // systemThreadGroup should now be the topmost ThreadGroup, "system"
+
+      int enumeratedGroups;
+      ThreadGroup[] allThreadGroups;
+      int noOfGroups = systemThreadGroup.activeGroupCount(); // Estimate no of groups
+      do {
+        noOfGroups += 10; // Make room for 10 extra
+        allThreadGroups = new ThreadGroup[noOfGroups];
+        enumeratedGroups = systemThreadGroup.enumerate(allThreadGroups);
+      } while(enumeratedGroups >= noOfGroups); // If there was not room for all groups, try again
+      
+      for(ThreadGroup threadGroup : allThreadGroups) {
+        if(isLoadedInWebApplication(threadGroup) && ! threadGroup.isDestroyed()) {
+          warn("ThreadGroup '" + threadGroup + "' was loaded inside application, needs to be destroyed");
+          
+          int noOfThreads = threadGroup.activeCount();
+          if(noOfThreads > 0) {
+            warn("There seems to be " + noOfThreads + " running in ThreadGroup '" + threadGroup + "'; interrupting");
+            try {
+              threadGroup.interrupt();
+            }
+            catch (Exception e) {
+              error(e);
+            }
+          }
+
+          try {
+            threadGroup.destroy();
+            info("ThreadGroup '" + threadGroup + "' successfully destroyed");
+          }
+          catch (Exception e) {
+            error(e);
+          }
+        }
+      }
     }
     catch (Exception ex) {
       error(ex);
