@@ -3,6 +3,8 @@ package se.jiderhamn.tests;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import se.jiderhamn.JUnitClassloaderRunner;
+import se.jiderhamn.LeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 /**
  * ThreadLocals work the same way as WeakHashMaps; from http://docs.oracle.com/javase/6/docs/api/java/util/WeakHashMap.html
@@ -16,6 +18,7 @@ import se.jiderhamn.JUnitClassloaderRunner;
  * @author Mattias Jiderhamn
  */
 @RunWith(JUnitClassloaderRunner.class)
+@LeakPreventor(ThreadLocalCustomValueTest.Prevent.class)
 public class ThreadLocalCustomValueTest {
   
   private static final ThreadLocal<Value> threadLocalWithCustomValue = new ThreadLocal<Value>();
@@ -37,6 +40,16 @@ public class ThreadLocalCustomValueTest {
 
   private static class Value {
     
+  }
+  
+  public static class Prevent implements Runnable {
+    public void run() {
+      new ClassLoaderLeakPreventor() {
+        {
+          clearThreadLocalsOfAllThreads();
+        }
+      };
+    }
   }
   
 }
