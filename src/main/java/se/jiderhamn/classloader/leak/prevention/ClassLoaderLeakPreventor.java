@@ -802,7 +802,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    * reference this classloader.
    */
   protected void unsetCachedKeepAliveTimer() {
-    Object keepAliveCache = getStaticFieldValue("sun.net.www.http.HttpClient", "kac");
+    Object keepAliveCache = getStaticFieldValue("sun.net.www.http.HttpClient", "kac", true);
     if(keepAliveCache != null) {
       final Thread keepAliveTimer = getFieldValue(keepAliveCache, "keepAliveTimer");
       if(keepAliveTimer != null) {
@@ -1004,12 +1004,20 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   protected <E> E getStaticFieldValue(String className, String fieldName) {
-    Field staticField = findFieldOfClass(className, fieldName);
+    return (E) getStaticFieldValue(className, fieldName, false);
+  }
+  
+  protected <E> E getStaticFieldValue(String className, String fieldName, boolean trySystemCL) {
+    Field staticField = findFieldOfClass(className, fieldName, trySystemCL);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
   
   protected Field findFieldOfClass(String className, String fieldName) {
-    Class clazz = findClass(className);
+    return findFieldOfClass(className, fieldName, false);
+  }
+  
+  protected Field findFieldOfClass(String className, String fieldName, boolean trySystemCL) {
+    Class clazz = findClass(className, trySystemCL);
     if(clazz != null) {
       return findField(clazz, fieldName);
     }
@@ -1018,6 +1026,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
   
   protected Class findClass(String className) {
+    return findClass(className, false);
+  }
+  
+  protected Class findClass(String className, boolean trySystemCL) {
     try {
       return Class.forName(className);
     }
@@ -1026,6 +1038,14 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 //      return null;
 //    }
     catch (ClassNotFoundException e) {
+      if (trySystemCL) {
+        try {
+          return Class.forName(className, true, ClassLoader.getSystemClassLoader());
+        } catch (ClassNotFoundException e1) {
+          // Silently ignore
+          return null;
+        }
+      }
       // Silently ignore
       return null;
     }
