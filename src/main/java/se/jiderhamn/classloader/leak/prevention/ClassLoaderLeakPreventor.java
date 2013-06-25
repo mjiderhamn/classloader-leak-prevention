@@ -638,12 +638,16 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   @SuppressWarnings("deprecation")
   protected void stopThreads() {
     final Class<?> workerClass = findClass("java.util.concurrent.ThreadPoolExecutor$Worker");
-    final Field targetField = findField(Thread.class, "target");
+    final Field oracleTarget = findField(Thread.class, "target"); // Sun/Oracle JRE
+    final Field ibmRunnable = findField(Thread.class, "runnable"); // IBM JRE
 
     for(Thread thread : getAllThreads()) {
-      final Runnable target = getFieldValue(targetField, thread);
+      @SuppressWarnings("RedundantCast") 
+      final Runnable runnable = (oracleTarget != null) ? 
+          (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
+          (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
       if(thread != Thread.currentThread() && // Ignore current thread
-         (isThreadInWebApplication(thread) || isLoadedInWebApplication(target))) {
+         (isThreadInWebApplication(thread) || isLoadedInWebApplication(runnable))) {
 
         if(thread.getThreadGroup() != null && 
            ("system".equals(thread.getThreadGroup().getName()) ||  // System thread
@@ -668,13 +672,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
           else {
             
             // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
-            if(workerClass != null && workerClass.isInstance(target)) {
+            if(workerClass != null && workerClass.isInstance(runnable)) {
               if(stopThreads) {
                 warn("Shutting down " + ThreadPoolExecutor.class.getName() + " running within the classloader.");
                 try {
                   // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
                   final Field workerExecutor = findField(workerClass, "this$0");
-                  final ThreadPoolExecutor executor = getFieldValue(workerExecutor, target);
+                  final ThreadPoolExecutor executor = getFieldValue(workerExecutor, runnable);
                   executor.shutdownNow();
                 }
                 catch (Exception ex) {
