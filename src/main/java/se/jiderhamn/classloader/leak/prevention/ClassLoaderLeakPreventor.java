@@ -121,7 +121,7 @@ import javax.servlet.ServletContextEvent;
  *   just add this one <code>.java</code> file into your own source tree.
  * </p>
  * 
- * @author Mattias Jiderhamn, 2012
+ * @author Mattias Jiderhamn, 2012-2013
  */
 public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener {
   
@@ -130,7 +130,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   /** Default no of milliseconds to wait for shutdown hook to finish execution */
   public static final int SHUTDOWN_HOOK_WAIT_MS_DEFAULT = 10 * 1000; // 10 seconds
-  
+
+  public static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
+
   ///////////
   // Settings
   
@@ -366,6 +368,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     clearIntrospectionUtilsCache();
 
     // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
+    
+    // Force the execution of the cleanup code for JURT; see https://issues.apache.org/ooo/show_bug.cgi?id=122517
+    forceStartOpenOfficeJurtCleanup();
 
     ////////////////////
     // Fix generic leaks
@@ -653,10 +658,21 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       final Runnable runnable = (oracleTarget != null) ? 
           (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
           (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
+      
       if(thread != Thread.currentThread() && // Ignore current thread
          (isThreadInWebApplication(thread) || isLoadedInWebApplication(runnable))) {
 
-        if(thread.getThreadGroup() != null && 
+        if (thread.getClass().getName().startsWith(JURT_ASYNCHRONOUS_FINALIZER)) {
+          // Note, the thread group of this thread may be "system" if it is triggered by the Garbage Collector
+          // however if triggered by us in forceStartOpenOfficeJurtCleanup() it may depend on the application server
+          if(stopThreads) {
+            info("Found JURT thread " + thread.getName() + "; starting " + JURTKiller.class.getSimpleName());
+            new JURTKiller(thread).start();
+          }
+          else
+            warn("JURT thread " + thread.getName() + " is still running in web app");
+        }
+        else if(thread.getThreadGroup() != null && 
            ("system".equals(thread.getThreadGroup().getName()) ||  // System thread
             "RMI Runtime".equals(thread.getThreadGroup().getName()))) { // RMI thread (honestly, just copied from Tomcat)
           
@@ -677,7 +693,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
             }
           }
           else {
-            
             // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
             if(workerClass != null && workerClass.isInstance(runnable)) {
               if(stopThreads) {
@@ -966,6 +981,37 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         warn("org.apache.commons.modeler.util.IntrospectionUtils needs to be cleared but there was an error, " +
             "consider upgrading Apache Commons Modeler");
         error(ex);
+      }
+    }
+  }
+  
+  /** 
+   * The bug detailed at https://issues.apache.org/ooo/show_bug.cgi?id=122517 is quite tricky. This is a try to 
+   * avoid the issues by force starting the threads and it's job queue.
+   */
+  protected void forceStartOpenOfficeJurtCleanup() {
+    if(stopThreads) {
+      if(isLoadedByWebApplication(findClass(JURT_ASYNCHRONOUS_FINALIZER))) {
+        /* 
+          The com.sun.star.lib.util.AsynchronousFinalizer class was found and loaded, which means that in case the
+          static block that starts the daemon thread had not been started yet, it has been started now.
+          
+          Now let's force Garbage Collection, with the hopes of having the finalize()ers that put Jobs on the
+          AsynchronousFinalizer queue be executed. Then just leave it, and handle the rest in {@link #stopThreads}.
+          */
+        info("OpenOffice JURT AsynchronousFinalizer thread started - forcing garbage collection to invoke finalizers");
+        gc();
+      }
+    }
+    else {
+      // Check for class existence without loading class and thus executing static block
+      if(getWebApplicationClassLoader().getResource("com/sun/star/lib/util/AsynchronousFinalizer.class") != null) {
+        warn("OpenOffice JURT AsynchronousFinalizer thread will not be stopped if started, as stopThreads is false");
+        /* 
+         By forcing Garbage Collection, we'll hopefully start the thread now, in case it would have been started by
+         GC later, so that at least it will appear in the logs. 
+         */
+        gc();
       }
     }
   }
@@ -1290,6 +1336,20 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     return defaultValue;
   }
 
+  /**
+   * Unlike <code>{@link System#gc()}</code> this method guarantees that garbage collection has been performed before
+   * returning.
+   */
+  protected static void gc() {
+    Object obj = new Object();
+    WeakReference ref = new WeakReference<Object>(obj);
+    //noinspection UnusedAssignment
+    obj = null;
+    while(ref.get() != null) {
+      System.gc();
+    }
+  }
+  
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Log methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1325,5 +1385,64 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   protected void error(Throwable t) {
     t.printStackTrace(System.err);
-  } 
+  }
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  
+  /** 
+   * Inner class with the sole task of killing JURT finalizer thread after it is done processing jobs. 
+   * We need to postpone the stopping of this thread, since more Jobs may in theory be add()ed when this web application
+   * instance is closing down and being garbage collected.
+   * See https://issues.apache.org/ooo/show_bug.cgi?id=122517
+   */
+  protected class JURTKiller extends Thread {
+    
+    private final Thread jurtThread;
+    
+    private final List jurtQueue;
+
+    public JURTKiller(Thread jurtThread) {
+      super("JURTKiller");
+      this.jurtThread = jurtThread;
+      jurtQueue = getStaticFieldValue(JURT_ASYNCHRONOUS_FINALIZER, "queue");
+    }
+
+    @Override
+    public void run() {
+      if(jurtQueue == null || jurtThread == null) {
+        error(getName() + ": No queue or thread!?");
+        return;
+      }
+      if(! jurtThread.isAlive()) {
+        warn(getName() + ": " + jurtThread.getName() + " is already dead?");
+      }
+      
+      boolean queueIsEmpty = false;
+      while(! queueIsEmpty) {
+        try {
+          debug(getName() + " goes to sleep for " + THREAD_WAIT_MS_DEFAULT + " ms");
+          Thread.sleep(THREAD_WAIT_MS_DEFAULT);
+        }
+        catch (InterruptedException e) {
+          // Do nothing
+        }
+
+        if(State.RUNNABLE != jurtThread.getState()) { // Unless thread is currently executing a Job
+          debug(getName() + " about to force Garbage Collection");
+          gc(); // Force garbage collection, which may put new items on queue
+
+          synchronized (jurtQueue) {
+            queueIsEmpty = jurtQueue.isEmpty();
+            debug(getName() + ": JURT queue is empty? " + queueIsEmpty);
+          }
+        }
+        else 
+          debug(getName() + ": JURT thread " + jurtThread.getName() + " is executing Job");
+      }
+      
+      info(getName() + " about to kill " + jurtThread);
+      if(jurtThread.isAlive())
+        jurtThread.stop();
+    }
+  }
 }
