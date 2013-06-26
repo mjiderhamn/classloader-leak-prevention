@@ -219,7 +219,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
     try {
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
-      // the current classloader to be available for gerbage collection
+      // the current classloader to be available for garbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
       
       java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
@@ -317,6 +317,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       }
       catch (InvocationTargetException itex) {
         error(itex);
+      }
+
+      // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
+      try {
+        Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
+      } catch (ClassNotFoundException e) {
+        // Ignore silently - class not present
       }
     }
     finally {
