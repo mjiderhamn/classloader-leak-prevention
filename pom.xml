@@ -106,7 +106,22 @@
       <artifactId>el-api</artifactId>
       <version>2.2.1-b04</version>
       <scope>test</scope>
-    </dependency>    
+    </dependency> 
+    <!-- Test leak in JSF api -->
+    <dependency>
+      <groupId>com.sun.faces</groupId>
+      <artifactId>jsf-api</artifactId>
+      <version>2.1.19</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Could be removed if Mockit was used to mock ELContext -->
+    <dependency>
+      <groupId>com.sun.faces</groupId>
+      <artifactId>jsf-impl</artifactId>
+      <version>2.1.19</version>
+      <scope>test</scope>
+    </dependency>
+    
   </dependencies>
 
   <!-- Configure GPG signing; see https://docs.sonatype.org/display/Repository/How+To+Generate+PGP+Signatures+With+Maven -->
