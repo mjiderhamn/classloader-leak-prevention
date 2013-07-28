@@ -15,6 +15,4 @@ public @interface Leaks {
    */
   boolean haltBeforeError() default false;
   
-  /** How many times should Garbage Collection be run before testing if there was a leak? */
-  int gcCount() default 1;
 }

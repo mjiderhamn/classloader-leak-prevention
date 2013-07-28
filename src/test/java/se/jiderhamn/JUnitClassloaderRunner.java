@@ -48,9 +48,6 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
      */
     private final boolean haltBeforeError;
     
-    /** How many times should Garbage Collection be run before testing if there was a leak? */
-    private final int gcCount;
-
     /** Class that can be used to remove the leak */
     private Class<? extends Runnable> preventorClass;
     
@@ -65,7 +62,6 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       final Leaks leakAnn = testMethod.getAnnotation(Leaks.class);
       this.expectedLeak = (leakAnn == null || leakAnn.value()); // Default to true
       this.haltBeforeError = (leakAnn != null && leakAnn.haltBeforeError()); // Default to false
-      this.gcCount = (leakAnn == null) ? 1 : leakAnn.gcCount(); // Default to 1
 
       this.preventorClass = preventorClass;
     }
@@ -108,8 +104,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myClassLoader.markAsZombie();
         myClassLoader = null; // Make available to garbage collector
         
-        for(int i = 0; i < gcCount; i++)
-          System.gc(); // Force Garbage Collector to run
+        forceGc();
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
@@ -131,8 +126,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
               redefiningClassLoader = null;
               Thread.currentThread().setContextClassLoader(clBefore);
               
-              for(int i = 0; i < gcCount; i++)
-                System.gc();
+              forceGc();
               
               if(haltBeforeError && weak.get() != null) {
                 waitForHeapDump();
@@ -159,6 +153,16 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
           assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
         }
+      }
+    }
+    
+    /** Make sure Garbage Collection has been run */
+    private static void forceGc() {
+      Object o = new Object();
+      WeakReference<Object> ref = new WeakReference<Object>(o);
+      o = null; // Make available for garbage collection
+      while(ref.get() != null) { // Until garbage collection has actually been run
+        System.gc();
       }
     }
 
