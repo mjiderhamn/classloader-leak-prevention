@@ -1027,7 +1027,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Test if provided object is loaded with web application classloader */
   protected boolean isLoadedInWebApplication(Object o) {
-    return o != null && isLoadedByWebApplication(o.getClass());
+    return (o instanceof Class) && isLoadedByWebApplication((Class)o) || // Object is a java.lang.Class instance 
+        o != null && isLoadedByWebApplication(o.getClass());
   }
 
   /** Test if provided class is loaded with web application classloader */
