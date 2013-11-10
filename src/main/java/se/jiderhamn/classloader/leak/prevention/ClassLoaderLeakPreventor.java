@@ -1282,31 +1282,32 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
             message.append(" that is loaded by web app");
         }
 
-        warn(message.toString());
         
-        processFurther(thread, entry, threadLocal, value); // Allow subclasses to perform further processing
+        // Process the detected potential leak
+        processLeak(thread, entry, threadLocal, value, message.toString());
       }
     }
     
     /**
-     * After having detected potential ThreadLocal leak and warned about it, this method is called.
-     * Subclasses may override this method to perform further processing, such as clean up. 
+     * After having detected potential ThreadLocal leak, this method is called. Default implementation only issues
+     * a warning. Subclasses may override this method to perform further processing, such as clean up. 
      */
-    protected void processFurther(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value) {
-      // To be overridden in subclass
+    protected void processLeak(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value, String message) {
+      warn(message);
     } 
   }
   
   /** ThreadLocalProcessor that not only detects and warns about potential leaks, but also tries to clear them */
   protected class ClearingThreadLocalProcessor extends WarningThreadLocalProcessor {
-    public void processFurther(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value) {
+    @Override
+    protected void processLeak(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value, String message) {
       if(threadLocal != null && thread == Thread.currentThread()) { // If running for current thread and we have the ThreadLocal ...
         // ... remove properly
-        info("  Will be remove()d");
+        info(message + " will be remove()d");
         threadLocal.remove();
       }
       else { // We cannot remove entry properly, so just make it stale
-        info("  Will be made stale for later expunging");
+        info(message + " will be made stale for later expunging");
         entry.clear(); // Clear the key
 
         if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
