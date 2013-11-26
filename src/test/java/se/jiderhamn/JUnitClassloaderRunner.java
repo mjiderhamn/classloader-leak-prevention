@@ -66,6 +66,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       this.preventorClass = preventorClass;
     }
 
+    @SuppressWarnings("UnusedAssignment")
     @Override
     public void evaluate() throws Throwable {
       final Class<?> junitClass = originalMethod.getDeclaringClass();
@@ -93,7 +94,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         redefinedClass = null;
       }
       catch (Exception e) {
-        throw new RuntimeException(e);
+        throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
       }
       finally {
         Thread.currentThread().setContextClassLoader(clBefore);
