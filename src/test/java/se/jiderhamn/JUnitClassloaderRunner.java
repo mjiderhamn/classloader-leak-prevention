@@ -93,7 +93,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         redefinedClass = null;
       }
       catch (Exception e) {
-        throw new RuntimeException(e);
+        throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
       }
       finally {
         Thread.currentThread().setContextClassLoader(clBefore);
