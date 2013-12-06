@@ -15,7 +15,7 @@ import se.jiderhamn.LeakPreventor;
 public class CXFAuthenticatorTest {
   
   @Test
-  public void triggetCxfAuthenticatorLeak() {
+  public void triggerCxfAuthenticatorLeak() {
     CXFAuthenticator.addAuthenticator();
   }
   
