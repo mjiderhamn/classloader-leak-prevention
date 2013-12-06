@@ -638,10 +638,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   protected void clearThreadLocalsOfAllThreads() {
-    final ThreadLocalProcessor clearingThreadLocalProcessor = new ClearingThreadLocalProcessor();
+    final ThreadLocalProcessor clearingThreadLocalProcessor = getThreadLocalProcessor();
     for(Thread thread : getAllThreads()) {
       forEachThreadLocalInThread(thread, clearingThreadLocalProcessor);
     }
+  }
+  
+  /** Get {@link ThreadLocalProcessor} to be used. Override to customize {@link ThreadLocal} processing. */
+  protected ThreadLocalProcessor getThreadLocalProcessor() {
+    return new ClearingThreadLocalProcessor();
   }
 
   /**
