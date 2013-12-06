@@ -114,7 +114,13 @@
       <version>2.1.19</version>
       <scope>test</scope>
     </dependency>
-    <!-- Could be removed if Mockit was used to mock ELContext -->
+    <!-- Test leak in CXF custom authenticator -->
+    <dependency>
+      <groupId>org.apache.cxf</groupId>
+      <artifactId>cxf-rt-transports-http</artifactId>
+      <version>2.6.10</version>
+    </dependency>
+    <!-- Could be removed if Mockito was used to mock ELContext -->
     <dependency>
       <groupId>com.sun.faces</groupId>
       <artifactId>jsf-impl</artifactId>
