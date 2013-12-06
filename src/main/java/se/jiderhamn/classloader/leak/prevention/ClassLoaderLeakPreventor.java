@@ -485,7 +485,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
       final Set<ObjectName> allMBeanNames = mBeanServer.queryNames(new ObjectName("*:*"), null);
 
-      // Special treatment for Jetty
+      // Special treatment for Jetty, see https://bugs.eclipse.org/bugs/show_bug.cgi?id=423255
       JettyJMXRemover jettyJMXRemover = null;
       if(isJettyWithJMX()) {
         try {
@@ -1465,7 +1465,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Methods and classes for Jetty 
+  // Methods and classes for Jetty, see https://bugs.eclipse.org/bugs/show_bug.cgi?id=423255 
   
   /** Are we running in Jetty with JMX enabled? */
   protected boolean isJettyWithJMX() {
@@ -1496,7 +1496,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    */
   private class JettyJMXRemover {
 
-    /** List of objects that may be wrapped in MBean by Jetty */
+    /** List of objects that may be wrapped in MBean by Jetty. Should be allowed to contain null. */
     private List objectsWrappedWithMBean;
 
     /** The org.eclipse.jetty.jmx.MBeanContainer instance */
@@ -1513,9 +1513,14 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // WebAppContext webappContext = (WebAppContext)servletContext;
       final Object webappContext = Class.forName("org.eclipse.jetty.webapp.WebAppClassLoader")
           .getMethod("getContext").invoke(classLoader);
+      if(webappContext == null)
+        return;
+      
       // Server server = (Server)webappContext.getServer();
       final Class webAppContextClass = Class.forName("org.eclipse.jetty.webapp.WebAppContext");
       final Object server = webAppContextClass.getMethod("getServer").invoke(webappContext);
+      if(server == null)
+        return;
 
       // MBeanContainer beanContainer = (MBeanContainer)server.getBean(MBeanContainer.class);
       final Class mBeanContainerClass = Class.forName("org.eclipse.jetty.jmx.MBeanContainer");
@@ -1530,29 +1535,37 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         objectsWrappedWithMBean = new ArrayList();
         // SessionHandler sessionHandler = webappContext.getSessionHandler();
         final Object sessionHandler = webAppContextClass.getMethod("getSessionHandler").invoke(webappContext);
-        objectsWrappedWithMBean.add(sessionHandler);
+        if(sessionHandler != null) {
+          objectsWrappedWithMBean.add(sessionHandler);
+  
+          // SessionManager sessionManager = sessionHandler.getSessionManager();
+          final Object sessionManager = Class.forName("org.eclipse.jetty.server.session.SessionHandler")
+              .getMethod("getSessionManager").invoke(sessionHandler);
+          if(sessionManager != null) {
+            objectsWrappedWithMBean.add(sessionManager);
 
-        // SessionManager sessionManager = sessionHandler.getSessionManager();
-        final Object sessionManager = Class.forName("org.eclipse.jetty.server.session.SessionHandler")
-            .getMethod("getSessionManager").invoke(sessionHandler);
-        objectsWrappedWithMBean.add(sessionManager);
-
-        // SessionIdManager sessionIdManager = sessionManager.getSessionIdManager();
-        objectsWrappedWithMBean.add(Class.forName("org.eclipse.jetty.server.SessionManager").getMethod("getSessionIdManager").invoke(sessionManager));
+            // SessionIdManager sessionIdManager = sessionManager.getSessionIdManager();
+            final Object sessionIdManager = Class.forName("org.eclipse.jetty.server.SessionManager")
+                .getMethod("getSessionIdManager").invoke(sessionManager);
+            objectsWrappedWithMBean.add(sessionIdManager);
+          }
+        }
 
         // SecurityHandler securityHandler = webappContext.getSecurityHandler();
         objectsWrappedWithMBean.add(webAppContextClass.getMethod("getSecurityHandler").invoke(webappContext));
 
         // ServletHandler servletHandler = webappContext.getServletHandler();
         final Object servletHandler = webAppContextClass.getMethod("getServletHandler").invoke(webappContext);
-        objectsWrappedWithMBean.add(servletHandler);
-
-        final Class servletHandlerClass = Class.forName("org.eclipse.jetty.servlet.ServletHandler");
-        // Object[] servletMappings = servletHandler.getServletMappings();
-        objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServletMappings").invoke(servletHandler)));
-
-        // Object[] servlets = servletHandler.getServlets();
-        objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServlets").invoke(servletHandler)));
+        if(servletHandler != null) {
+          objectsWrappedWithMBean.add(servletHandler);
+  
+          final Class servletHandlerClass = Class.forName("org.eclipse.jetty.servlet.ServletHandler");
+          // Object[] servletMappings = servletHandler.getServletMappings();
+          objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServletMappings").invoke(servletHandler)));
+  
+          // Object[] servlets = servletHandler.getServlets();
+          objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServlets").invoke(servletHandler)));
+        }
       }
     }
 
