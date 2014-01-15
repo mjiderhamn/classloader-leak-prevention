@@ -393,11 +393,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     deregisterRmiTargets();
     
-    clearThreadLocalsOfAllThreads();
-    
     stopThreads();
     
     destroyThreadGroups();
+
+    // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads
+    clearThreadLocalsOfAllThreads();
 
     unsetCachedKeepAliveTimer();
     
