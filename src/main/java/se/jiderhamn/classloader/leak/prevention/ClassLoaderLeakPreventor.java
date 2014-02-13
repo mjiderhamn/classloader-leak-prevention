@@ -1426,23 +1426,26 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     protected void processLeak(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value, String message) {
       if(threadLocal != null && thread == Thread.currentThread()) { // If running for current thread and we have the ThreadLocal ...
         // ... remove properly
-        info(message + " will be remove()d");
+        info(message + " will be remove()d from " + thread);
         threadLocal.remove();
       }
       else { // We cannot remove entry properly, so just make it stale
-        info(message + " will be made stale for later expunging");
-        entry.clear(); // Clear the key
+        info(message + " will be made stale for later expunging from " + thread);
+      }
 
-        if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
-          java_lang_ThreadLocal$ThreadLocalMap$Entry_value = findField(entry.getClass(), "value");
-        }
+      // It seems like remove() doesn't really do the job, so play it safe and remove references from entry either way
+      // (Example problem org.infinispan.context.SingleKeyNonTxInvocationContext) 
+      entry.clear(); // Clear the key
 
-        try {
-          java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
-        }
-        catch (IllegalAccessException iaex) {
-          error(iaex);
-        }
+      if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
+        java_lang_ThreadLocal$ThreadLocalMap$Entry_value = findField(entry.getClass(), "value");
+      }
+
+      try {
+        java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
+      }
+      catch (IllegalAccessException iaex) {
+        error(iaex);
       }
     }
   }
