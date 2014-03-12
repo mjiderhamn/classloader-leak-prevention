@@ -842,6 +842,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
               if(threadWaitMs > 0) {
                 try {
+                  thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
+                }
+                catch (SecurityException e) {
+                  error(e);
+                }
+
+                try {
                   thread.join(threadWaitMs); // Wait for thread to run
                 }
                 catch (InterruptedException e) {
