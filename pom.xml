@@ -87,12 +87,6 @@
       <version>0.2</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>org.apache.cxf</groupId>
-      <artifactId>cxf-rt-transports-http</artifactId>
-      <version>2.5.2</version>
-      <scope>test</scope>
-    </dependency>
     <!-- JDBC driver for DriverManager test -->
     <dependency>
       <groupId>mysql</groupId>
@@ -119,6 +113,7 @@
       <groupId>org.apache.cxf</groupId>
       <artifactId>cxf-rt-transports-http</artifactId>
       <version>2.6.10</version>
+      <scope>test</scope>
     </dependency>
     <!-- Could be removed if Mockito was used to mock ELContext -->
     <dependency>
