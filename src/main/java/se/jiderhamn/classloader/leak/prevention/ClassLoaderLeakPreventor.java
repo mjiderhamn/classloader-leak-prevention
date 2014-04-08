@@ -224,9 +224,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
       // the current classloader to be available for garbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
-      
-      java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
-      
+
+      try {
+        java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
+      }
+      catch (Throwable t) {
+        error(t);
+        warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
+      }
+
       java.security.Security.getProviders();
       
       java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
