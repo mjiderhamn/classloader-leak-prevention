@@ -1394,26 +1394,32 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
             }
 
             if(resin_suspendState != null && resin_isSuspended != null) { // Both fields exist (as per version 4.0.37)
-              // What we are about to do is unsafe, since in theory a new transaction can be started and suspended
-              // between where we read and write the state. We should therefore consider suspending the thread meanwhile.
-              // TODO thread.suspend();
-              final Object suspendState = getFieldValue(resin_suspendState, value);
-              if(suspendState != null) { // There is a suspended state that may cause leaks
-                final Object isSuspended = getFieldValue(resin_isSuspended, value);
-                if(! (isSuspended instanceof Boolean)) {
-                  error(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " but _isSuspended is " + isSuspended);
+              if(getFieldValue(resin_suspendState, value) != null) { // There is a suspended state that may cause leaks
+                // In theory a new transaction can be started and suspended between where we read and write the state,
+                // and flag, therefore we suspend the thread meanwhile.
+                try {
+                  thread.suspend(); // Suspend the thread
+                  if(getFieldValue(resin_suspendState, value) != null) { // Re-read suspend state when thread is suspended
+                    final Object isSuspended = getFieldValue(resin_isSuspended, value);
+                    if(! (isSuspended instanceof Boolean)) {
+                      error(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " but _isSuspended is not boolean: " + isSuspended);
+                    }
+                    else if((Boolean)isSuspended) { // Is currently suspended - suspend state is correct
+                      debug(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " that is suspended");
+                    }
+                    else { // Is not suspended, and thus should not have suspend state
+                      resin_suspendState.set(value, null);
+                      error(thread.toString() + " had " + CAUCHO_TRANSACTION_IMPL + " with unused _suspendState that was removed");
+                    }
+                  }
                 }
-                else if((Boolean)isSuspended) { // Is currently suspended
-                  debug(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " that is suspended");
+                catch (Throwable t) { // Such as SecurityException
+                  error(t);
                 }
-                else { // Is not suspended, and thus should not have suspend state
-                  resin_suspendState.set(value, null);
-                  // TODO If now suspended
-                  error(thread.toString() + " had " + CAUCHO_TRANSACTION_IMPL + " with unused _suspendState that was removed");
+                finally {
+                  thread.resume();
                 }
               }
-
-              // TODO thread.resume()
             }
           }
 
