@@ -814,7 +814,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         
           if("java.util.TimerThread".equals(thread.getClass().getName())) {
             if(stopTimerThreads) {
-              warn("Stopping Timer thread running in classloader.");
+              warn("Stopping Timer thread '" + thread.getName() + "' running in classloader.");
               stopTimerThread(thread);
             }
             else {
