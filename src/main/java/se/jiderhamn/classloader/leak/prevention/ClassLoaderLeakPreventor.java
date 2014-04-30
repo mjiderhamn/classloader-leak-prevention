@@ -133,6 +133,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   public static final int SHUTDOWN_HOOK_WAIT_MS_DEFAULT = 10 * 1000; // 10 seconds
 
   public static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
+  
+  /** Class name for per thread transaction in Caucho Resin transaction manager */
+  public static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
 
   ///////////
   // Settings
@@ -1376,6 +1379,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   protected void processThreadLocalMap(Thread thread, ThreadLocalProcessor threadLocalProcessor, Object threadLocalMap) throws IllegalAccessException {
     if(threadLocalMap != null && java_lang_ThreadLocal$ThreadLocalMap_table != null) {
+      Field resin_suspendState = null;
+      Field resin_isSuspended = null;
       final Object[] threadLocalMapTable = (Object[]) java_lang_ThreadLocal$ThreadLocalMap_table.get(threadLocalMap); // java.lang.ThreadLocal.ThreadLocalMap.Entry[]
       for(Object entry : threadLocalMapTable) {
         if(entry != null) {
@@ -1388,6 +1393,43 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
           }
           
           final Object value = java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry);
+          
+          // Workaround for http://bugs.caucho.com/view.php?id=5647
+          if(value != null && CAUCHO_TRANSACTION_IMPL.equals(value.getClass().getName())) { // Resin transaction
+            if(resin_suspendState == null && resin_isSuspended == null) { // First thread with Resin transaction, look up fields
+              resin_suspendState = findField(value.getClass(), "_suspendState");
+              resin_isSuspended = findField(value.getClass(), "_isSuspended");
+            }
+
+            if(resin_suspendState != null && resin_isSuspended != null) { // Both fields exist (as per version 4.0.37)
+              if(getFieldValue(resin_suspendState, value) != null) { // There is a suspended state that may cause leaks
+                // In theory a new transaction can be started and suspended between where we read and write the state,
+                // and flag, therefore we suspend the thread meanwhile.
+                try {
+                  thread.suspend(); // Suspend the thread
+                  if(getFieldValue(resin_suspendState, value) != null) { // Re-read suspend state when thread is suspended
+                    final Object isSuspended = getFieldValue(resin_isSuspended, value);
+                    if(! (isSuspended instanceof Boolean)) {
+                      error(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " but _isSuspended is not boolean: " + isSuspended);
+                    }
+                    else if((Boolean)isSuspended) { // Is currently suspended - suspend state is correct
+                      debug(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " that is suspended");
+                    }
+                    else { // Is not suspended, and thus should not have suspend state
+                      resin_suspendState.set(value, null);
+                      error(thread.toString() + " had " + CAUCHO_TRANSACTION_IMPL + " with unused _suspendState that was removed");
+                    }
+                  }
+                }
+                catch (Throwable t) { // Such as SecurityException
+                  error(t);
+                }
+                finally {
+                  thread.resume();
+                }
+              }
+            }
+          }
 
           threadLocalProcessor.process(thread, reference, threadLocal, value);
         }
