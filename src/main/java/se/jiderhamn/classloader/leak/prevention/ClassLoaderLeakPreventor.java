@@ -270,6 +270,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       catch (ClassNotFoundException e) {
         // Do nothing
       }
+      catch (Throwable t) {
+        warn(t);
+      }
       
 
       try {
@@ -1270,6 +1273,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   protected <T> T getStaticFieldValue(Field field) {
     try {
+      if(! Modifier.isStatic(field.getModifiers())) {
+        warn(field.toString() + " is not static");
+        return null;
+      }
+      
       return (T) field.get(null);
     }
     catch (Exception ex) {
