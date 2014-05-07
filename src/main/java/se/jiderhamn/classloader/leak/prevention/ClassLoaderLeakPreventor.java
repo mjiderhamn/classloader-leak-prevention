@@ -1055,7 +1055,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
      web application.     
      */
     
-    Object o = getStaticFieldValue("javax.faces.component.UIComponentBase", "descriptors");
+    Object o = getStaticFieldValue("javax.faces.component.UIComponentBase", "descriptors"); // Non-static as of JSF 2.2.5
     if(o instanceof WeakHashMap) {
       WeakHashMap descriptors = (WeakHashMap) o;
       final Set<Class> toRemove = new HashSet<Class>();
