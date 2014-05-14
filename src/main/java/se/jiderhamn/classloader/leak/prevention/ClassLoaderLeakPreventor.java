@@ -24,7 +24,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.Authenticator;
+import java.net.ProxySelector;
 import java.net.URL;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -403,6 +406,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     clearDefaultAuthenticator();
     
+    clearDefaultProxySelector();
+    
     deregisterRmiTargets();
     
     stopThreads();
@@ -734,6 +739,21 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
+  /** If default {@link java.net.ProxySelector} is loaded by web application it needs to be unset */
+  protected void clearDefaultProxySelector() {
+    AccessController.doPrivileged(new PrivilegedAction<Void>() {
+      @Override
+      public Void run() {
+        ProxySelector selector = ProxySelector.getDefault();
+        if(isLoadedInWebApplication(selector)) {
+          ProxySelector.setDefault(null);
+          warn("Removing default java.net.ProxySelector: " + selector);
+        }
+        return null;
+      }
+    });
+  }
+
   /** This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesRmiTargets() */
   protected void deregisterRmiTargets() {
     try {
