@@ -1,4 +1,5 @@
 # Classloader leak prevention library
+[![Build Status](https://api.travis-ci.org/mjiderhamn/classloader-leak-prevention.png)](http://travis-ci.org/mjiderhamn/classloader-leak-prevention)
 
 If you want to avoid the dreaded `java.lang.OutOfMemoryError: PermGen space`, just include this library into your Java EE application, and add this context listener in your `web.xml`:
 
