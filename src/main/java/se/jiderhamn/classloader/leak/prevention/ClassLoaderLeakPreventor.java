@@ -37,6 +37,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
 
 /**
  * This class helps prevent classloader leaks.
@@ -127,7 +128,7 @@ import javax.servlet.ServletContextEvent;
  * 
  * @author Mattias Jiderhamn, 2012-2013
  */
-public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener {
+public class ClassLoaderLeakPreventor implements ServletContextListener {
   
   /** Default no of milliseconds to wait for threads to finish execution */
   public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
@@ -175,6 +176,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
+  protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
+
   public ClassLoaderLeakPreventor() {
     // Initialize some reflection variables
     java_lang_Thread_threadLocals = findField(Thread.class, "threadLocals");
@@ -189,6 +192,16 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     if(java_lang_ThreadLocal$ThreadLocalMap_table == null)
       error("java.lang.ThreadLocal$ThreadLocalMap.table not found; something is seriously wrong!");
+
+    try{
+        Class<?> introspectorCleanupListenerClass = Class.forName("org.springframework.web.util.IntrospectorCleanupListener");
+        ServletContextListener introspectorCleanupListener = (ServletContextListener) introspectorCleanupListenerClass.newInstance();
+        otherListeners.add(introspectorCleanupListener);
+    }catch (ClassNotFoundException e) {
+        // Ignore silently
+    }catch(Exception e){
+        error(e);
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -348,6 +361,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Reset original classloader
       Thread.currentThread().setContextClassLoader(contextClassLoader);
     }
+    for(ServletContextListener listener : otherListeners){
+        try{
+            listener.contextInitialized(servletContextEvent);
+        }catch(Exception e){
+            error(e);
+        }
+    }
   }
 
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
@@ -470,7 +490,14 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         error(ex);
       }
     }
-    
+
+    for(ServletContextListener listener : otherListeners){
+        try{
+          listener.contextDestroyed(servletContextEvent);
+        }catch(Exception e){
+          error(e);
+        }
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
