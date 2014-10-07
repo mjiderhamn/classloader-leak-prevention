@@ -1574,26 +1574,48 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     return ClassLoaderLeakPreventor.class.getSimpleName() + ": ";
   }
   
+  /**
+   * To "turn off" debug logging override this method in a subclass and make that subclass method empty.
+   */
   protected void debug(String s) {
     System.out.println(getLogPrefix() + s);
   } 
 
+  /**
+   * To "turn off" info logging override this method in a subclass and make that subclass method empty.
+   */
   protected void info(String s) {
     System.out.println(getLogPrefix() + s);
   } 
 
+  /**
+   * To "turn off" warn logging override this method in a subclass and make that subclass method empty.
+   * Also turn off {@link #warn(Throwable)}.
+   */
   protected void warn(String s) {
     System.err.println(getLogPrefix() + s);
   } 
 
+  /**
+   * To "turn off" warn logging override this method in a subclass and make that subclass method empty.
+   * Also turn off {@link #warn(String)}.
+   */
   protected void warn(Throwable t) {
     t.printStackTrace(System.err);
   } 
 
+  /**
+   * To "turn off" error logging override this method in a subclass and make that subclass method empty.
+   * Also turn off {@link #error(Throwable)}.
+   */
   protected void error(String s) {
     System.err.println(getLogPrefix() + s);
   } 
 
+  /**
+   * To "turn off" error logging override this method in a subclass and make that subclass method empty.
+   * Also turn off {@link #error(String)}.
+   */
   protected void error(Throwable t) {
     t.printStackTrace(System.err);
   }
