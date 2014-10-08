@@ -167,6 +167,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** Is it possible, that we are running under JBoss? */
   private boolean mayBeJBoss = false;
 
+  /** are we running in the Oracle/Sun Java Runtime Environment? */
+  private boolean isSunJRE;
+
   protected final Field java_lang_Thread_threadLocals;
 
   protected final Field java_lang_Thread_inheritableThreadLocals;
@@ -211,16 +214,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     info("  threadWaitMs = " + threadWaitMs + " ms");
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
-    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-
-    try {
-      // If package org.jboss is found, we may be running under JBoss
-      mayBeJBoss = (contextClassLoader.getResource("org/jboss") != null);
-    }
-    catch(Exception ex) {
-      // Do nothing
-    }
+    mayBeJBoss = isJBoss();
+    isSunJRE = isSunJRE();
     
+    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
 
     info("Initializing context by loading some known offenders with system classloader");
     
@@ -231,118 +228,34 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // the current classloader to be available for garbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
 
-      try {
-        java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
-      }
-      catch (Throwable t) {
-        error(t);
-        warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
-      }
+      initAwt();
 
-      java.security.Security.getProviders();
+      initSecurityProviders();
       
-      java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
+      initJdbcDrivers();
 
-      javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
+      initImageIO();
 
-      try {
-        Class.forName("javax.security.auth.Policy")
-            .getMethod("getPolicy")
-            .invoke(null);
-      }
-      catch (IllegalAccessException iaex) {
-        error(iaex);
-      }
-      catch (InvocationTargetException itex) {
-        error(itex);
-      }
-      catch (NoSuchMethodException nsmex) {
-        error(nsmex);
-      }
-      catch (ClassNotFoundException e) {
-        // Ignore silently - class is deprecated
-      }
+      initSecurityPolicy();
 
-      try {
-        javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
-      }
-      catch (Exception ex) { // Example: ParserConfigurationException
-        error(ex);
-      }
+      initDocumentBuilderFactory();
       
-      try {
-        Class.forName("javax.xml.bind.DatatypeConverterImpl"); // Since JDK 1.6. May throw java.lang.Error
-      }
-      catch (ClassNotFoundException e) {
-        // Do nothing
-      }
-      catch (Throwable t) {
-        warn(t);
-      }
-      
+      initDatatypeConverterImpl();
 
-      try {
-        Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
-      }
-      catch (ClassNotFoundException e) {
-        // Do nothing
-      }
+      initJavaxSecurityLoginConfiguration();
 
-      // This probably does not affect classloaders, but prevents some problems with .jar files
-      try {
-        // URL needs to be well-formed, but does not need to exist
-        new URL("jar:file://dummy.jar!/").openConnection().setDefaultUseCaches(false);
-      }
-      catch (Exception ex) {
-        error(ex);
-      }
+      initJarUrlConnection();
 
       /////////////////////////////////////////////////////
       // Load Sun specific classes that may cause leaks
       
-      final boolean isSunJRE = System.getProperty("java.vendor").startsWith("Sun");
+      initLdapPoolManager();
       
-      try {
-        Class.forName("com.sun.jndi.ldap.LdapPoolManager");
-      }
-      catch(ClassNotFoundException cnfex) {
-        if(isSunJRE)
-          error(cnfex);
-      }
-
-      try {
-        Class.forName("sun.java2d.Disposer"); // Will start a Thread
-      }
-      catch (ClassNotFoundException cnfex) {
-        if(isSunJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
-          error(cnfex);
-      }
-
-      try {
-        Class<?> gcClass = Class.forName("sun.misc.GC");
-        final Method requestLatency = gcClass.getDeclaredMethod("requestLatency", long.class);
-        requestLatency.invoke(null, 3600000L);
-      }
-      catch (ClassNotFoundException cnfex) {
-        if(isSunJRE)
-          error(cnfex);
-      }
-      catch (NoSuchMethodException nsmex) {
-        error(nsmex);
-      }
-      catch (IllegalAccessException iaex) {
-        error(iaex);
-      }
-      catch (InvocationTargetException itex) {
-        error(itex);
-      }
-
-      // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
-      try {
-        Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
-      } catch (ClassNotFoundException e) {
-        // Ignore silently - class not present
-      }
+      initJava2dDisposer();
+      
+      initSunGC();
+      
+      initOracleJdbcThread();
     }
     finally {
       // Reset original classloader
@@ -350,6 +263,279 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
 
+  /**
+   * Override this method if you want to customize how we determine if we're running in
+   * JBoss WildFly (a.k.a JBoss AS).
+   */
+  protected boolean isJBoss() {
+    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+    
+    try {
+      // If package org.jboss is found, we may be running under JBoss
+      return (contextClassLoader.getResource("org/jboss") != null);
+    }
+    catch(Exception ex) {
+      return false;
+    }
+  }
+  
+  /**
+   * Override this method if you want to customize how we determine if this is a Sun/Oracle
+   * Java Runtime Environment.
+   */
+  protected boolean isSunJRE() {
+    return System.getProperty("java.vendor").startsWith("Sun");
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * The first call to java.awt.Toolkit.getDefaultToolkit() will spawn a new thread with the
+   * same contextClassLoader as the caller.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initAwt() {
+    try {
+      java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
+    }
+    catch (Throwable t) {
+      error(t);
+      warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * Custom java.security.Provider loaded in your web application and registered with
+   * java.security.Security.addProvider() must be unregistered with java.security.Security.removeProvider()
+   * at application shutdown, or it will cause leaks.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initSecurityProviders() {
+    java.security.Security.getProviders();
+  }
+  
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * Your JDBC driver will be registered in java.sql.DriverManager, which means that if
+   * you include your JDBC driver inside your web application, there will be a reference
+   * to your webapps classloader from system classes (see
+   * <a href="http://java.jiderhamn.se/2012/01/01/classloader-leaks-ii-find-and-work-around-unwanted-references/">part II</a>).
+   * The simple solution is to put JDBC driver on server level instead, but you can also
+   * deregister the driver at application shutdown.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initJdbcDrivers() {
+    java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * There will be a strong reference to the classloader of the calls to sun.awt.AppContext.getAppContext().
+   * Note that Google Web Toolkit (GWT) will trigger this leak via its use of javax.imageio.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initImageIO() {
+    javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * javax.security.auth.Policy.getPolicy() will keep a strong static reference to
+   * the contextClassLoader of the first calling thread.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initSecurityPolicy() {
+    try {
+      Class.forName("javax.security.auth.Policy")
+          .getMethod("getPolicy")
+          .invoke(null);
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
+    }
+    catch (InvocationTargetException itex) {
+      error(itex);
+    }
+    catch (NoSuchMethodException nsmex) {
+      error(nsmex);
+    }
+    catch (ClassNotFoundException e) {
+      // Ignore silently - class is deprecated
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * The classloader of the first thread to call DocumentBuilderFactory.newInstance().newDocumentBuilder()
+   * seems to be unable to garbage collection. Is it believed this is caused by some JVM internal bug.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initDocumentBuilderFactory() {
+    try {
+      javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
+    }
+    catch (Exception ex) { // Example: ParserConfigurationException
+      error(ex);
+    }
+  }
+  
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * javax.xml.bind.DatatypeConverterImpl in the JAXB Reference Implementation shipped with JDK 1.6+ will
+   * keep a static reference (datatypeFactory) to a concrete subclass of javax.xml.datatype.DatatypeFactory,
+   * that is resolved when the class is loaded (which I believe happens if you have custom bindings that
+   * reference the static methods in javax.xml.bind.DatatypeConverter). It seems that if for example you
+   * have a version of Xerces inside your application, the factory method may resolve
+   * org.apache.xerces.jaxp.datatype.DatatypeFactoryImpl as the implementation to use (rather than
+   * com.sun.org.apache.xerces.internal.jaxp.datatype.DatatypeFactoryImpl shipped with the JDK), which
+   * means there will a reference from javax.xml.bind.DatatypeConverterImpl to your classloader.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initDatatypeConverterImpl() {
+    try {
+      Class.forName("javax.xml.bind.DatatypeConverterImpl"); // Since JDK 1.6. May throw java.lang.Error
+    }
+    catch (ClassNotFoundException e) {
+      // Do nothing
+    }
+    catch (Throwable t) {
+      warn(t);
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * The class javax.security.auth.login.Configuration will keep a strong static reference to the
+   * contextClassLoader of Thread from which the class is loaded.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initJavaxSecurityLoginConfiguration() {
+    try {
+      Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
+    }
+    catch (ClassNotFoundException e) {
+      // Do nothing
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * The caching mechanism of JarURLConnection can prevent JAR files to be reloaded. See
+   * <a href="http://bugs.sun.com/bugdatabase/view_bug.do;jsessionid=b8cdbff5fd7a2482996ac1c7f708?bug_id=4405789">this bug report</a>.
+   * It is not entirely clear whether this will actually leak classloaders.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initJarUrlConnection() {
+    // This probably does not affect classloaders, but prevents some problems with .jar files
+    try {
+      // URL needs to be well-formed, but does not need to exist
+      new URL("jar:file://dummy.jar!/").openConnection().setDefaultUseCaches(false);
+    }
+    catch (Exception ex) {
+      error(ex);
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * The contextClassLoader of the thread loading the com.sun.jndi.ldap.LdapPoolManager class may be kept
+   * from being garbage collected, since it will start a new thread if the system property.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initLdapPoolManager() {
+    try {
+      Class.forName("com.sun.jndi.ldap.LdapPoolManager");
+    }
+    catch(ClassNotFoundException cnfex) {
+      if(isSunJRE)
+        error(cnfex);
+    }
+  }
+  
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * Loading the class sun.java2d.Disposer will spawn a new thread with the same contextClassLoader.
+   * <a href="https://issues.apache.org/bugzilla/show_bug.cgi?id=51687">More info</a>.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initJava2dDisposer() {
+    try {
+      Class.forName("sun.java2d.Disposer"); // Will start a Thread
+    }
+    catch (ClassNotFoundException cnfex) {
+      if(isSunJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
+        error(cnfex);
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * sun.misc.GC.requestLatency(long), which is known to be called from
+   * javax.management.remote.rmi.RMIConnectorServer.start(), will cause the current
+   * contextClassLoader to be unavailable for garbage collection.
+   * 
+   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initSunGC() {
+    try {
+      Class<?> gcClass = Class.forName("sun.misc.GC");
+      final Method requestLatency = gcClass.getDeclaredMethod("requestLatency", long.class);
+      requestLatency.invoke(null, 3600000L);
+    }
+    catch (ClassNotFoundException cnfex) {
+      if(isSunJRE)
+        error(cnfex);
+    }
+    catch (NoSuchMethodException nsmex) {
+      error(nsmex);
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
+    }
+    catch (InvocationTargetException itex) {
+      error(itex);
+    }
+  }
+
+  /**
+   * To skip this step override this method in a subclass and make that subclass method empty.
+   * 
+   * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/8
+   * and https://github.com/mjiderhamn/classloader-leak-prevention/issues/23
+   * and http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   */
+  protected void initOracleJdbcThread() {
+    // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
+    try {
+      Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
+    } catch (ClassNotFoundException e) {
+      // Ignore silently - class not present
+    }
+  }
+  
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
 
     final boolean jvmIsShuttingDown = isJvmShuttingDown();
