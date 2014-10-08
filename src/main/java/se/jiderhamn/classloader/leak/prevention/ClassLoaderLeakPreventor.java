@@ -168,7 +168,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   private boolean mayBeJBoss = false;
 
   /** are we running in the Oracle/Sun Java Runtime Environment? */
-  private boolean isSunJRE;
+  private boolean isOracleJRE;
 
   protected final Field java_lang_Thread_threadLocals;
 
@@ -215,7 +215,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
     mayBeJBoss = isJBoss();
-    isSunJRE = isSunJRE();
+    isOracleJRE = isOracleJRE();
     
     final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
 
@@ -280,11 +280,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
   
   /**
-   * Override this method if you want to customize how we determine if this is a Sun/Oracle
+   * Override this method if you want to customize how we determine if this is a Oracle/Sun
    * Java Runtime Environment.
    */
-  protected boolean isSunJRE() {
-    return System.getProperty("java.vendor").startsWith("Sun");
+  protected boolean isOracleJRE() {
+    String javaVendor = System.getProperty("java.vendor");
+    
+    return javaVendor.startsWith("Oracle") || javaVendor.startsWith("Sun");
   }
 
   /**
@@ -467,7 +469,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       Class.forName("com.sun.jndi.ldap.LdapPoolManager");
     }
     catch(ClassNotFoundException cnfex) {
-      if(isSunJRE)
+      if(isOracleJRE)
         error(cnfex);
     }
   }
@@ -485,7 +487,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       Class.forName("sun.java2d.Disposer"); // Will start a Thread
     }
     catch (ClassNotFoundException cnfex) {
-      if(isSunJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
+      if(isOracleJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
         error(cnfex);
     }
   }
@@ -506,7 +508,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       requestLatency.invoke(null, 3600000L);
     }
     catch (ClassNotFoundException cnfex) {
-      if(isSunJRE)
+      if(isOracleJRE)
         error(cnfex);
     }
     catch (NoSuchMethodException nsmex) {
