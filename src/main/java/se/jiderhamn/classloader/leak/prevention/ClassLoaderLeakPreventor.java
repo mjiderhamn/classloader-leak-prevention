@@ -1062,7 +1062,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     final Field ibmRunnable = findField(Thread.class, "runnable"); // IBM JRE
 
     for(Thread thread : getAllThreads()) {
-      @SuppressWarnings("RedundantCast") 
       final Runnable runnable = (oracleTarget != null) ? 
           (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
           (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
