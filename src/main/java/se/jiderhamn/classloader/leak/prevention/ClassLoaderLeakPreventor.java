@@ -20,21 +20,16 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.reflect.*;
 import java.net.Authenticator;
 import java.net.ProxySelector;
 import java.net.URL;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
+import java.security.*;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
-
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
@@ -142,6 +137,10 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** Class name for per thread transaction in Caucho Resin transaction manager */
   public static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
 
+  private static final ProtectionDomain[] NO_DOMAINS = new ProtectionDomain[0];
+
+  private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
+
   ///////////
   // Settings
   
@@ -154,6 +153,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Should shutdown hooks registered from the application be executed at application shutdown? */
   protected boolean executeShutdownHooks = true;
+
+  /** 
+   * Should the {@code oracle.jdbc.driver.OracleTimeoutPollingThread} thread be forced to start with system classloader,
+   * in case Oracle JDBC driver is present? This is normally a good idea, but can be disabled in case the Oracle JDBC
+   * driver is not used even though it is on the classpath.
+   */
+  protected boolean startOracleTimeoutThread = true;
 
   /** 
    * No of milliseconds to wait for threads to finish execution, before stopping them.
@@ -205,6 +211,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
     stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
     executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
+    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
     threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
     shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
@@ -229,41 +236,94 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
       // the current classloader to be available for garbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
-
-      initAwt();
-
-      initSecurityProviders();
       
-      initJdbcDrivers();
-
-      initImageIO();
-
-      initSecurityPolicy();
-
-      initDocumentBuilderFactory();
-      
-      initDatatypeConverterImpl();
-
-      initJavaxSecurityLoginConfiguration();
-
-      initJarUrlConnection();
-
-      /////////////////////////////////////////////////////
-      // Load Sun specific classes that may cause leaks
-      
-      initLdapPoolManager();
-      
-      initJava2dDisposer();
-      
-      initSunGC();
-      
-      initOracleJdbcThread();
+      // Use doPrivileged() not to perform secured actions, but to avoid threads spawned inheriting the 
+      // AccessControlContext of the current thread, since among the ProtectionDomains there will be one
+      // (the top one) whose classloader is the web app classloader
+      AccessController.doPrivileged(new PrivilegedAction<Object>() {
+        @Override
+        public Object run() {
+          initAwt();
+    
+          initSecurityProviders();
+          
+          initJdbcDrivers();
+    
+          initImageIO();
+    
+          initSecurityPolicy();
+    
+          initDocumentBuilderFactory();
+          
+          initDatatypeConverterImpl();
+    
+          initJavaxSecurityLoginConfiguration();
+    
+          initJarUrlConnection();
+    
+          /////////////////////////////////////////////////////
+          // Load Sun specific classes that may cause leaks
+          
+          initLdapPoolManager();
+          
+          initJava2dDisposer();
+          
+          initSunGC();
+          
+          initOracleJdbcThread();
+          
+          return null; // Nothing to return
+        }
+      }, createAccessControlContext());
     }
     finally {
       // Reset original classloader
       Thread.currentThread().setContextClassLoader(contextClassLoader);
     }
   }
+  
+  /** 
+   * Create {@link AccessControlContext} that is used in {@link #contextInitialized(javax.servlet.ServletContextEvent)}.
+   * The motive is to avoid spawned threads from inheriting all the {@link java.security.ProtectionDomain}s of the 
+   * running code, since that will include the web app classloader.
+   */
+  protected AccessControlContext createAccessControlContext() {
+
+    final DomainCombiner domainCombiner = new DomainCombiner() {
+      @Override
+      public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
+        if(assignedDomains != null && assignedDomains.length > 0) {
+          error("Unexpected assignedDomains - please report to developer of this library!");
+        }
+        
+        // Keep all ProtectionDomain not involving the web app classloader 
+        final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
+        for(ProtectionDomain protectionDomain : currentDomains) {
+          if(protectionDomain.getClassLoader() == null || 
+             ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
+            output.add(protectionDomain);
+          }
+        }
+        return output.toArray(new ProtectionDomain[output.size()]);
+      }
+    };
+
+    try { // Try the normal way
+      return new AccessControlContext(NO_DOMAINS_ACCESS_CONTROL_CONTEXT, domainCombiner);
+    }
+    catch (SecurityException e) { // createAccessControlContext not granted
+      try { // Try reflection
+        Constructor<AccessControlContext> constructor = 
+            AccessControlContext.class.getDeclaredConstructor(ProtectionDomain[].class, DomainCombiner.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(NO_DOMAINS, domainCombiner);
+      }
+      catch (Exception e1) {
+        error("createAccessControlContext not granted and AccessControlContext could not be created via reflection");
+        return AccessController.getContext();
+      }
+    }
+  } 
 
   /**
    * Override this method if you want to customize how we determine if we're running in
@@ -525,18 +585,19 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
    * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/8
    * and https://github.com/mjiderhamn/classloader-leak-prevention/issues/23
    * and http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
    */
   protected void initOracleJdbcThread() {
-    // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
-    try {
-      Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
-    } catch (ClassNotFoundException e) {
-      // Ignore silently - class not present
+    if(startOracleTimeoutThread) {
+      // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
+      try {
+        Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
+      }
+      catch (ClassNotFoundException e) {
+        // Ignore silently - class not present
+      }
     }
   }
   

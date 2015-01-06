@@ -57,6 +57,15 @@ The context listener has a number of settings that can be configured with contex
      <td>Should shutdown hooks registered from the application be executed at application shutdown?</td>
    </tr>
    <tr>
+     <td><code>ClassLoaderLeakPreventor.startOracleTimeoutThread</td>
+     <td><code>true</code></td>
+     <td>
+       Should the <code>oracle.jdbc.driver.OracleTimeoutPollingThread</code> thread be forced to start with system ClassLoader,
+       in case Oracle JDBC driver is present? This is normally a good idea, but can be disabled in case the Oracle JDBC
+       driver is not used even though it is on the classpath.
+     </td>
+   </tr>
+   <tr>
      <td><code>ClassLoaderLeakPreventor.threadWaitMs</td>
      <td nowrap="nowrap"><code>5000</code><br />(5 seconds)</td>
      <td>No of milliseconds to wait for threads to finish execution, before stopping them.</td>
