@@ -17,6 +17,7 @@ package se.jiderhamn.classloader.leak.prevention;
 
 import java.beans.PropertyEditorManager;
 import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
@@ -33,6 +34,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
@@ -1740,6 +1742,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
    * returning.
    */
   protected static void gc() {
+    if (isDisableExplicitGCEnabled()) {
+      System.err.println(ClassLoaderLeakPreventor.class.getSimpleName() + ": "
+          + "Skipping GC call since -XX:+DisableExplicitGC is supplied as VM option.");
+      return;
+    }
+    
     Object obj = new Object();
     WeakReference ref = new WeakReference<Object>(obj);
     //noinspection UnusedAssignment
@@ -1748,6 +1756,18 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       System.gc();
     }
   }
+  
+  /**
+   * Check is "-XX:+DisableExplicitGC" enabled.
+   *
+   * @return true is "-XX:+DisableExplicitGC" is set als vm argument, false otherwise.
+   */
+  private static boolean isDisableExplicitGCEnabled() {
+    RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
+    List<String> aList = bean.getInputArguments();
+
+    return aList.contains("-XX:+DisableExplicitGC");
+  }  
   
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Log methods
