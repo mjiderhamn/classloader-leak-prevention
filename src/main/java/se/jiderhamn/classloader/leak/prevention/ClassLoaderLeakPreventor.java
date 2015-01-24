@@ -38,6 +38,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
+import javax.swing.*;
 
 /**
  * This class helps prevent classloader leaks.
@@ -253,7 +254,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
           
           initJdbcDrivers();
     
-          initImageIO();
+          initSunAwtAppContext();
     
           initSecurityPolicy();
     
@@ -405,13 +406,21 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /**
    * To skip this step override this method in a subclass and make that subclass method empty.
    * 
-   * There will be a strong reference to the classloader of the calls to sun.awt.AppContext.getAppContext().
+   * There will be a strong reference from {@link sun.awt.AppContext#contextClassLoader} to the classloader of the calls
+   * to {@link sun.awt.AppContext#getAppContext()}. Avoid leak by forcing initialization using system classloader. 
    * Note that Google Web Toolkit (GWT) will trigger this leak via its use of javax.imageio.
    * 
    * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
    */
-  protected void initImageIO() {
-    javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
+  protected void initSunAwtAppContext() {
+    try {
+      javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
+      new JEditorPane("text/plain", "dummy"); // According to GitHub user dany52, the above is not enough
+    }
+    catch (Throwable t) {
+      error(t);
+      warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
+    }
   }
 
   /**
