@@ -73,13 +73,7 @@
       <version>4.2.0.Final</version>
       <scope>test</scope>
     </dependency>
-    <!-- ImageIO leak test -->
-    <dependency>
-      <groupId>com.twelvemonkeys.imageio</groupId>
-      <artifactId>imageio-tiff</artifactId>
-      <version>3.0.2</version>
-      <scope>test</scope>
-    </dependency>
+    <!-- Apache Axis 1.4 for leak test -->
     <dependency>
       <groupId>org.apache.axis</groupId>
       <artifactId>axis</artifactId>
