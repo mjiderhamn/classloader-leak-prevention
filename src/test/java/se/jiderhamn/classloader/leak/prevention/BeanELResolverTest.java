@@ -29,7 +29,6 @@ public class BeanELResolverTest {
   }
   
   /** Bean for testing */
-  @SuppressWarnings("UnusedDeclaration")
   public static class Bean {
     private String foo;
 

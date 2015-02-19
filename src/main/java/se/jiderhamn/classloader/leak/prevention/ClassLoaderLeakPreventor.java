@@ -210,7 +210,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Implement javax.servlet.ServletContextListener 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
+  @Override
   public void contextInitialized(ServletContextEvent servletContextEvent) {
     final ServletContext servletContext = servletContextEvent.getServletContext();
     stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
@@ -241,7 +241,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Switch to system classloader in before we load/call some JRE stuff that will cause 
       // the current classloader to be available for garbage collection
       Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
-      
+  
       // Use doPrivileged() not to perform secured actions, but to avoid threads spawned inheriting the 
       // AccessControlContext of the current thread, since among the ProtectionDomains there will be one
       // (the top one) whose classloader is the web app classloader
@@ -613,7 +613,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       }
     }
   }
-  
+
+  @Override
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
 
     final boolean jvmIsShuttingDown = isJvmShuttingDown();
@@ -726,7 +727,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     // Use reflection in case ACL is not present.
     // Do this last, in case other shutdown procedures want to log something.
     
-    final Class logFactory = findClass("org.apache.commons.logging.LogFactory");
+    final Class<?> logFactory = findClass("org.apache.commons.logging.LogFactory");
     if(logFactory != null) { // Apache Commons Logging present
       info("Releasing web app classloader from Apache Commons Logging");
       try {
@@ -758,7 +759,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     while (categories.hasNext()) {
       @SuppressWarnings("unchecked")
       Class<IIOServiceProvider> category = (Class<IIOServiceProvider>) categories.next();
-      Iterator<IIOServiceProvider> serviceProviders = registry.<IIOServiceProvider> getServiceProviders(
+      Iterator<IIOServiceProvider> serviceProviders = registry.getServiceProviders(
         category,
         classLoaderFilter, true);
       if (serviceProviders.hasNext()) {
@@ -840,7 +841,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   protected void deregisterShutdownHooks() {
     // We will not remove known shutdown hooks, since loading the owning class of the hook,
     // may register the hook if previously unregistered 
-    Map<Thread, Thread> shutdownHooks = (Map<Thread, Thread>) getStaticFieldValue("java.lang.ApplicationShutdownHooks", "hooks");
+    Map<Thread, Thread> shutdownHooks = getStaticFieldValue("java.lang.ApplicationShutdownHooks", "hooks");
     if(shutdownHooks != null) { // Could be null during JVM shutdown, which we already avoid, but be extra precautious
       // Iterate copy to avoid ConcurrentModificationException
       for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
@@ -888,9 +889,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     else {
       try {
         synchronized (PropertyEditorManager.class) {
-          final Map<Class<?>, Class<?>> registry = (Map) registryField.get(null);
+          final Map<Class<?>, Class<?>> registry = (Map<Class<?>, Class<?>>) registryField.get(null);
           if(registry != null) { // Initialized
-            final Set<Class> toRemove = new HashSet<Class>();
+            final Set<Class<?>> toRemove = new HashSet<Class<?>>();
             
             for(Map.Entry<Class<?>, Class<?>> entry : registry.entrySet()) {
               if(isLoadedByWebApplication(entry.getKey()) ||
@@ -899,7 +900,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
               }
             }
             
-            for(Class clazz : toRemove) {
+            for(Class<?> clazz : toRemove) {
               warn("Property editor for type " + clazz +  " = " + registry.get(clazz) + " needs to be deregistered");
               PropertyEditorManager.registerEditor(clazz, null); // Deregister
             }
@@ -949,13 +950,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
          See https://issues.apache.org/jira/browse/CXF-5442
         */
 
-        final Class cxfAuthenticator = findClass("org.apache.cxf.transport.http.CXFAuthenticator");
+        final Class<?> cxfAuthenticator = findClass("org.apache.cxf.transport.http.CXFAuthenticator");
         if(cxfAuthenticator != null && isLoadedByWebApplication(cxfAuthenticator)) { // CXF loaded in this application
           final Object cxfAuthenticator$instance = getStaticFieldValue(cxfAuthenticator, "instance");
           if(cxfAuthenticator$instance != null) { // CXF authenticator has been initialized in this webapp
             final Object authReference = getFieldValue(defaultAuthenticator, "auth");
             if(authReference instanceof Reference) { // WeakReference 
-              final Reference reference = (Reference) authReference;
+              final Reference<?> reference = (Reference<?>) authReference;
               final Object referencedAuth = reference.get();
               if(referencedAuth == cxfAuthenticator$instance) { // References CXFAuthenticator of this classloader 
                 warn("Default " + Authenticator.class.getName() + " was " + defaultAuthenticator + " that referenced " +
@@ -1008,7 +1009,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       return;
 
     try {
-      Class authenticatorClass = authenticator.getClass();
+      Class<?> authenticatorClass = authenticator.getClass();
       do {
         for(final Field f : authenticator.getClass().getDeclaredFields()) {
           if(Authenticator.class.isAssignableFrom(f.getType())) {
@@ -1056,7 +1057,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesRmiTargets() */
   protected void deregisterRmiTargets() {
     try {
-      final Class objectTableClass = findClass("sun.rmi.transport.ObjectTable");
+      final Class<?> objectTableClass = findClass("sun.rmi.transport.ObjectTable");
       if(objectTableClass != null) {
         clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "objTable"));
         clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "implTable"));
@@ -1108,7 +1109,6 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     final Field ibmRunnable = findField(Thread.class, "runnable"); // IBM JRE
 
     for(Thread thread : getAllThreads()) {
-      @SuppressWarnings("RedundantCast") 
       final Runnable runnable = (oracleTarget != null) ? 
           (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
           (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
@@ -1224,7 +1224,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       // Do what java.util.Timer.cancel() does
       //noinspection SynchronizationOnLocalVariableOrMethodParameter
       synchronized (queue) {
-        newTasksMayBeScheduled.set(thread, false);
+        newTasksMayBeScheduled.set(thread, Boolean.FALSE);
         clear.invoke(queue);
         queue.notify(); // "In case queue was already empty."
       }
@@ -1307,7 +1307,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   /** Clean the cache of BeanELResolver */
   protected void clearBeanELResolverCache() {
-    final Class beanElResolverClass = findClass("javax.el.BeanELResolver");
+    final Class<?> beanElResolverClass = findClass("javax.el.BeanELResolver");
     if(beanElResolverClass != null) {
       boolean cleared = false;
       try {
@@ -1328,7 +1328,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         final Field propertiesField = findField(beanElResolverClass, "properties");
         if(propertiesField != null) {
           try {
-            final Map properties = (Map) propertiesField.get(null);
+            final Map<?, ?> properties = (Map<?, ?>) propertiesField.get(null);
             properties.clear();
           }
           catch (Exception e) {
@@ -1340,7 +1340,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
   
   public void fixBeanValidationApiLeak() {
-    Class offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
+    Class<?> offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
     if(offendingClass != null) { // Class is present on class path
       Field offendingField = findField(offendingClass, "providersPerClassloader");
       if(offendingField != null) {
@@ -1349,7 +1349,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
           //noinspection SynchronizationOnLocalVariableOrMethodParameter
           synchronized (providersPerClassloader) {
             // Fix the leak!
-            ((Map)providersPerClassloader).remove(getWebApplicationClassLoader());
+            ((Map<?, ?>)providersPerClassloader).remove(getWebApplicationClassLoader());
           }
         }
       }
@@ -1376,12 +1376,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     Object o = getStaticFieldValue("javax.faces.component.UIComponentBase", "descriptors"); // Non-static as of JSF 2.2.5
     if(o instanceof WeakHashMap) {
-      WeakHashMap descriptors = (WeakHashMap) o;
-      final Set<Class> toRemove = new HashSet<Class>();
+      WeakHashMap<?, ?> descriptors = (WeakHashMap<?, ?>) o;
+      final Set<Class<?>> toRemove = new HashSet<Class<?>>();
       for(Object key : descriptors.keySet()) {
-        if(key instanceof Class && isLoadedByWebApplication((Class)key)) {
+        if(key instanceof Class && isLoadedByWebApplication((Class<?>)key)) {
           // For performance reasons, remove all classes loaded in web application
-          toRemove.add((Class) key);
+          toRemove.add((Class<?>) key);
           
           // This would be more correct, but presumably slower
           /*
@@ -1398,7 +1398,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       
       if(! toRemove.isEmpty()) {
         info("Removing " + toRemove.size() + " classes from Mojarra descriptors cache");
-        for(Class clazz : toRemove) {
+        for(Class<?> clazz : toRemove) {
           descriptors.remove(clazz);
         }
       }
@@ -1407,7 +1407,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Shutdown GeoTools cleaner thread as of http://jira.codehaus.org/browse/GEOT-2742 */
   protected void fixGeoToolsLeak() {
-    final Class weakCollectionCleanerClass = findClass("org.geotools.util.WeakCollectionCleaner");
+    final Class<?> weakCollectionCleanerClass = findClass("org.geotools.util.WeakCollectionCleaner");
     if(weakCollectionCleanerClass != null) {
       try {
         weakCollectionCleanerClass.getMethod("exit").invoke(null);
@@ -1421,7 +1421,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** Clear IntrospectionUtils caches of Tomcat and Apache Commons Modeler */
   protected void clearIntrospectionUtilsCache() {
     // Tomcat
-    final Class tomcatIntrospectionUtils = findClass("org.apache.tomcat.util.IntrospectionUtils");
+    final Class<?> tomcatIntrospectionUtils = findClass("org.apache.tomcat.util.IntrospectionUtils");
     if(tomcatIntrospectionUtils != null) {
       try {
         tomcatIntrospectionUtils.getMethod("clear").invoke(null);
@@ -1433,7 +1433,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
 
     // Apache Commons Modeler
-    final Class modelIntrospectionUtils = findClass("org.apache.commons.modeler.util.IntrospectionUtils");
+    final Class<?> modelIntrospectionUtils = findClass("org.apache.commons.modeler.util.IntrospectionUtils");
     if(modelIntrospectionUtils != null && ! isWebAppClassLoaderOrChild(modelIntrospectionUtils.getClassLoader())) { // Loaded outside web app
       try {
         modelIntrospectionUtils.getMethod("clear").invoke(null);
@@ -1488,12 +1488,12 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   
   /** Test if provided object is loaded with web application classloader */
   protected boolean isLoadedInWebApplication(Object o) {
-    return (o instanceof Class) && isLoadedByWebApplication((Class)o) || // Object is a java.lang.Class instance 
+    return (o instanceof Class) && isLoadedByWebApplication((Class<?>)o) || // Object is a java.lang.Class instance 
         o != null && isLoadedByWebApplication(o.getClass());
   }
 
   /** Test if provided class is loaded with web application classloader */
-  protected boolean isLoadedByWebApplication(Class clazz) {
+  protected boolean isLoadedByWebApplication(Class<?> clazz) {
     return clazz != null && isWebAppClassLoaderOrChild(clazz.getClassLoader());
   }
 
@@ -1517,7 +1517,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
        isWebAppClassLoaderOrChild(thread.getContextClassLoader()); // Running in web application
   }
   
-  protected <E> E getStaticFieldValue(Class clazz, String fieldName) {
+  protected <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {
     Field staticField = findField(clazz, fieldName);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
@@ -1536,7 +1536,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
   
   protected Field findFieldOfClass(String className, String fieldName, boolean trySystemCL) {
-    Class clazz = findClass(className, trySystemCL);
+    Class<?> clazz = findClass(className, trySystemCL);
     if(clazz != null) {
       return findField(clazz, fieldName);
     }
@@ -1544,11 +1544,11 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       return null;
   }
   
-  protected Class findClass(String className) {
+  protected Class<?> findClass(String className) {
     return findClass(className, false);
   }
   
-  protected Class findClass(String className, boolean trySystemCL) {
+  protected Class<?> findClass(String className, boolean trySystemCL) {
     try {
       return Class.forName(className);
     }
@@ -1574,7 +1574,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
   }
   
-  protected Field findField(Class clazz, String fieldName) {
+  protected Field findField(Class<?> clazz, String fieldName) {
     if(clazz == null)
       return null;
 
@@ -1704,7 +1704,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       for(Object entry : threadLocalMapTable) {
         if(entry != null) {
           // Key is kept in WeakReference
-          Reference reference = (Reference) entry;
+          Reference<?> reference = (Reference<?>) entry;
           final ThreadLocal<?> threadLocal = (ThreadLocal<?>) reference.get();
 
           if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
@@ -1757,12 +1757,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   }
 
   protected interface ThreadLocalProcessor {
-    void process(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value);
+    void process(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value);
   }
 
   /** ThreadLocalProcessor that detects and warns about potential leaks */
   protected class WarningThreadLocalProcessor implements ThreadLocalProcessor {
-    public final void process(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value) {
+    @Override
+    public final void process(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value) {
       final boolean customThreadLocal = isLoadedInWebApplication(threadLocal); // This is not an actual problem
       final boolean valueLoadedInWebApp = isLoadedInWebApplication(value);
       if(customThreadLocal || valueLoadedInWebApp ||
@@ -1797,7 +1798,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
      * After having detected potential ThreadLocal leak, this method is called. Default implementation only issues
      * a warning. Subclasses may override this method to perform further processing, such as clean up. 
      */
-    protected void processLeak(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value, String message) {
+    protected void processLeak(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value, String message) {
       warn(message);
     } 
   }
@@ -1805,7 +1806,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   /** ThreadLocalProcessor that not only detects and warns about potential leaks, but also tries to clear them */
   protected class ClearingThreadLocalProcessor extends WarningThreadLocalProcessor {
     @Override
-    protected void processLeak(Thread thread, Reference entry, ThreadLocal<?> threadLocal, Object value, String message) {
+    protected void processLeak(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value, String message) {
       if(threadLocal != null && thread == Thread.currentThread()) { // If running for current thread and we have the ThreadLocal ...
         // ... remove properly
         info(message + " will be remove()d from " + thread);
@@ -1858,7 +1859,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     }
     
     Object obj = new Object();
-    WeakReference ref = new WeakReference<Object>(obj);
+    WeakReference<Object> ref = new WeakReference<Object>(obj);
     //noinspection UnusedAssignment
     obj = null;
     while(ref.get() != null) {
@@ -1949,7 +1950,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     private final Thread jurtThread;
     
-    private final List jurtQueue;
+    private final List<?> jurtQueue;
 
     public JURTKiller(Thread jurtThread) {
       super("JURTKiller");
@@ -2029,7 +2030,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   private class JettyJMXRemover {
 
     /** List of objects that may be wrapped in MBean by Jetty. Should be allowed to contain null. */
-    private List objectsWrappedWithMBean;
+    private List<Object> objectsWrappedWithMBean;
 
     /** The org.eclipse.jetty.jmx.MBeanContainer instance */
     private Object beanContainer;
@@ -2049,13 +2050,13 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         return;
       
       // Server server = (Server)webappContext.getServer();
-      final Class webAppContextClass = Class.forName("org.eclipse.jetty.webapp.WebAppContext");
+      final Class<?> webAppContextClass = Class.forName("org.eclipse.jetty.webapp.WebAppContext");
       final Object server = webAppContextClass.getMethod("getServer").invoke(webappContext);
       if(server == null)
         return;
 
       // MBeanContainer beanContainer = (MBeanContainer)server.getBean(MBeanContainer.class);
-      final Class mBeanContainerClass = Class.forName("org.eclipse.jetty.jmx.MBeanContainer");
+      final Class<?> mBeanContainerClass = Class.forName("org.eclipse.jetty.jmx.MBeanContainer");
       beanContainer = Class.forName("org.eclipse.jetty.server.Server")
           .getMethod("getBean", Class.class).invoke(server, mBeanContainerClass);
 	  
@@ -2064,7 +2065,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         findBeanMethod = mBeanContainerClass.getMethod("findBean", ObjectName.class);
         removeBeanMethod = mBeanContainerClass.getMethod("removeBean", Object.class);
 
-        objectsWrappedWithMBean = new ArrayList();
+        objectsWrappedWithMBean = new ArrayList<Object>();
         // SessionHandler sessionHandler = webappContext.getSessionHandler();
         final Object sessionHandler = webAppContextClass.getMethod("getSessionHandler").invoke(webappContext);
         if(sessionHandler != null) {
@@ -2091,7 +2092,7 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
         if(servletHandler != null) {
           objectsWrappedWithMBean.add(servletHandler);
   
-          final Class servletHandlerClass = Class.forName("org.eclipse.jetty.servlet.ServletHandler");
+          final Class<?> servletHandlerClass = Class.forName("org.eclipse.jetty.servlet.ServletHandler");
           // Object[] servletMappings = servletHandler.getServletMappings();
           objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServletMappings").invoke(servletHandler)));
   

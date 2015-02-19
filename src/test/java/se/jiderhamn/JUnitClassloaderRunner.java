@@ -66,7 +66,6 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       this.preventorClass = preventorClass;
     }
 
-    @SuppressWarnings("UnusedAssignment")
     @Override
     public void evaluate() throws Throwable {
       final Class<?> junitClass = originalMethod.getDeclaringClass();
@@ -79,8 +78,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         Thread.currentThread().setContextClassLoader(myClassLoader);
         Class redefinedClass = myClassLoader.loadClass(junitClass.getName());
 
-  System.out.println("JUnit used " + junitClass.getClassLoader()); // TODO turn debugging on/off      
-  System.out.println("SeparateClassLoaderInvokeMethod used " + redefinedClass.getClassLoader()); // TODO turn debugging on/off
+        System.out.println("JUnit used " + junitClass.getClassLoader()); // TODO turn debugging on/off
+        System.out.println("SeparateClassLoaderInvokeMethod used " + redefinedClass.getClassLoader()); // TODO turn debugging on/off
 
         Method myMethod = redefinedClass.getDeclaredMethod(originalMethod.getName(), originalMethod.getParameterTypes());
         TestClass myTestClass = new TestClass(redefinedClass);

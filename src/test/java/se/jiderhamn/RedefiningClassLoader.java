@@ -11,11 +11,10 @@ class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   };
   
   /** Set to non-null to indicate it should be ready for garbage collection */
-  @SuppressWarnings({"FieldCanBeLocal", "UnusedDeclaration"})
+  @SuppressWarnings({"unused", "FieldCanBeLocal"})
   private ZombieMarker zombieMarker = null;
   
   private final String name;
-      
 
   RedefiningClassLoader(ClassLoader parent) {
     this(parent, null);
