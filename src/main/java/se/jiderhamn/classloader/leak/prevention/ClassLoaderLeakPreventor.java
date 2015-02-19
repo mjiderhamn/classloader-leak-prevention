@@ -30,6 +30,10 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
+
+import javax.imageio.spi.IIORegistry;
+import javax.imageio.spi.IIOServiceProvider;
+import javax.imageio.spi.ServiceRegistry;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import javax.servlet.ServletContext;
@@ -638,6 +642,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     
     // Force the execution of the cleanup code for JURT; see https://issues.apache.org/ooo/show_bug.cgi?id=122517
     forceStartOpenOfficeJurtCleanup();
+    
+    // clear ImageIO registry
+    deregisterIIOServiceProvider();
 
     ////////////////////
     // Fix generic leaks
@@ -728,7 +735,39 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
   // Fix generic leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  /** Deregister JDBC drivers loaded by web app classloader */
+  /** Unregister ImageIO Service Provider loaded by the web application class loader */
+  protected void deregisterIIOServiceProvider() {
+    IIORegistry registry = IIORegistry.getDefaultInstance();
+    Iterator<Class<?>> categories = registry.getCategories();
+    ServiceRegistry.Filter classLoaderFilter = new ServiceRegistry.Filter() {
+      @Override
+      public boolean filter(Object provider) {
+        //remove all service provider loaded by the current ClassLoader
+        return isLoadedInWebApplication(provider);
+      }
+    };
+    while (categories.hasNext()) {
+      @SuppressWarnings("unchecked")
+      Class<IIOServiceProvider> category = (Class<IIOServiceProvider>) categories.next();
+      Iterator<IIOServiceProvider> serviceProviders = registry.<IIOServiceProvider> getServiceProviders(
+        category,
+        classLoaderFilter, true);
+      if (serviceProviders.hasNext()) {
+        //copy to list
+        List<IIOServiceProvider> serviceProviderList = new ArrayList<IIOServiceProvider>();
+        while (serviceProviders.hasNext()) {
+          serviceProviderList.add(serviceProviders.next());
+        }
+        for (IIOServiceProvider serviceProvider : serviceProviderList) {
+          warn("ImageIO " + category.getSimpleName() + " service provider deregistered: "
+            + serviceProvider.getDescription(Locale.ROOT));
+          registry.deregisterServiceProvider(serviceProvider);
+        }
+      }
+    }
+  }
+
+/** Deregister JDBC drivers loaded by web app classloader */
   public void deregisterJdbcDrivers() {
     final List<Driver> driversToDeregister = new ArrayList<Driver>();
     final Enumeration<Driver> allDrivers = DriverManager.getDrivers();
