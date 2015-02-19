@@ -39,6 +39,7 @@ import javax.management.ObjectName;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.swing.*;
+import javax.servlet.ServletContextListener;
 
 /**
  * This class helps prevent classloader leaks.
@@ -129,7 +130,7 @@ import javax.swing.*;
  * 
  * @author Mattias Jiderhamn, 2012-2013
  */
-public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextListener {
+public class ClassLoaderLeakPreventor implements ServletContextListener {
   
   /** Default no of milliseconds to wait for threads to finish execution */
   public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
@@ -191,6 +192,9 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
+  /** Other {@link javax.servlet.ServletContextListener}s to use also */
+  protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
+
   public ClassLoaderLeakPreventor() {
     // Initialize some reflection variables
     java_lang_Thread_threadLocals = findField(Thread.class, "threadLocals");
@@ -205,6 +209,18 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     if(java_lang_ThreadLocal$ThreadLocalMap_table == null)
       error("java.lang.ThreadLocal$ThreadLocalMap.table not found; something is seriously wrong!");
+
+    try{
+      Class<ServletContextListener> introspectorCleanupListenerClass = 
+          (Class<ServletContextListener>) Class.forName("org.springframework.web.util.IntrospectorCleanupListener");
+      otherListeners.add(introspectorCleanupListenerClass.newInstance());
+    }
+    catch (ClassNotFoundException e) {
+      // Ignore silently - Spring not present on classpath
+    }
+    catch(Exception e){
+      error(e);
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -284,6 +300,15 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
     finally {
       // Reset original classloader
       Thread.currentThread().setContextClassLoader(contextClassLoader);
+    }
+
+    for(ServletContextListener listener : otherListeners) {
+      try {
+        listener.contextInitialized(servletContextEvent);
+      }
+      catch(Exception e){
+        error(e);
+      }
     }
   }
   
@@ -625,7 +650,16 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
 
     info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" + 
          Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + ")");
-    
+
+    for(ServletContextListener listener : otherListeners) {
+      try {
+        listener.contextDestroyed(servletContextEvent);
+      }
+      catch(Exception e) {
+        error(e);
+      }
+    }
+
     //////////////////
     // Fix known leaks
     //////////////////
@@ -760,8 +794,8 @@ public class ClassLoaderLeakPreventor implements javax.servlet.ServletContextLis
       @SuppressWarnings("unchecked")
       Class<IIOServiceProvider> category = (Class<IIOServiceProvider>) categories.next();
       Iterator<IIOServiceProvider> serviceProviders = registry.getServiceProviders(
-        category,
-        classLoaderFilter, true);
+          category,
+          classLoaderFilter, true);
       if (serviceProviders.hasNext()) {
         //copy to list
         List<IIOServiceProvider> serviceProviderList = new ArrayList<IIOServiceProvider>();
