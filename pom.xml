@@ -37,6 +37,8 @@
   <properties>
     <maven.compiler.source>1.6</maven.compiler.source>
     <maven.compiler.target>1.6</maven.compiler.target>
+    <!-- Disable strict JavaDoc checking, as per http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html -->
+    <additionalparam>-Xdoclint:none</additionalparam>
   </properties>
 
   <dependencies>
