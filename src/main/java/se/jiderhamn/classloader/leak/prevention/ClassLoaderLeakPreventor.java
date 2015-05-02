@@ -170,7 +170,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
   /** 
    * No of milliseconds to wait for threads to finish execution, before stopping them.
    */
-  protected int threadWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
+  protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
 
   /** 
    * No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
@@ -1142,13 +1142,15 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     final Field oracleTarget = findField(Thread.class, "target"); // Sun/Oracle JRE
     final Field ibmRunnable = findField(Thread.class, "runnable"); // IBM JRE
 
+    final boolean waitForThreads = threadWaitMs > 0;
     for(Thread thread : getAllThreads()) {
       final Runnable runnable = (oracleTarget != null) ? 
           (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
           (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
-      
+
+      final boolean runnableLoadedInWebApplication = isLoadedInWebApplication(runnable);
       if(thread != Thread.currentThread() && // Ignore current thread
-         (isThreadInWebApplication(thread) || isLoadedInWebApplication(runnable))) {
+         (isThreadInWebApplication(thread) || runnableLoadedInWebApplication)) {
 
         if (thread.getClass().getName().startsWith(JURT_ASYNCHRONOUS_FINALIZER)) {
           // Note, the thread group of this thread may be "system" if it is triggered by the Garbage Collector
@@ -1200,26 +1202,25 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
             }
 
             final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-            
-            if(stopThreads) {
-              final String waitString = (threadWaitMs > 0) ? "after " + threadWaitMs + " ms " : "";
+
+            if(! isLoadedInWebApplication(thread) && ! runnableLoadedInWebApplication) { // Not loaded in web app - just running there
+              // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
+              if(waitForThreads) {
+                warn("Thread " + displayString + " running in web app; waiting " + threadWaitMs);
+                waitForThread(thread, threadWaitMs);
+              }
+              
+              if(thread.isAlive() && isWebAppClassLoaderOrChild(thread.getContextClassLoader())) {
+                warn("Thread " + displayString + (waitForThreads ? " still" : "") + 
+                    " running in web app; changing context classloader to system classloader");
+                thread.setContextClassLoader(ClassLoader.getSystemClassLoader());
+              }
+            }
+            else if(stopThreads) { // Loaded by web app
+              final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
               warn("Stopping Thread " + displayString + " running in web app " + waitString);
 
-              if(threadWaitMs > 0) {
-                try {
-                  thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
-                }
-                catch (SecurityException e) {
-                  error(e);
-                }
-
-                try {
-                  thread.join(threadWaitMs); // Wait for thread to run
-                }
-                catch (InterruptedException e) {
-                  // Do nothing
-                }
-              }
+              waitForThread(thread, threadWaitMs);
 
               // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
               // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
@@ -1270,6 +1271,30 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     }
   }
   
+  /**
+   * Make the provided Thread stop sleep(), wait() or join() and then give it the provided no of milliseconds to finish
+   * executing. 
+   * @param thread The thread to wake up and wait for
+   * @param waitMs The no of milliseconds to wait. If <= 0 this method does nothing.
+   */
+  protected void waitForThread(Thread thread, long waitMs) {
+    if(waitMs > 0) {
+      try {
+        thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
+      }
+      catch (SecurityException e) {
+        error(e);
+      }
+
+      try {
+        thread.join(waitMs); // Wait for thread to run
+      }
+      catch (InterruptedException e) {
+        // Do nothing
+      }
+    }
+  }
+
   /** Destroy any ThreadGroups that are loaded by the application classloader */
   public void destroyThreadGroups() {
     try {
