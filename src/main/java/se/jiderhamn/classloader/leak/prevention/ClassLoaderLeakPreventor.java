@@ -17,6 +17,7 @@ package se.jiderhamn.classloader.leak.prevention;
 
 import java.beans.PropertyEditorManager;
 import java.lang.management.ManagementFactory;
+import java.lang.management.PlatformManagedObject;
 import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
@@ -30,16 +31,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
-
 import javax.imageio.spi.IIORegistry;
 import javax.imageio.spi.IIOServiceProvider;
 import javax.imageio.spi.ServiceRegistry;
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
+import javax.management.*;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
-import javax.swing.*;
 import javax.servlet.ServletContextListener;
+import javax.swing.*;
 
 /**
  * This class helps prevent classloader leaks.
@@ -699,6 +698,9 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     // Unregister MBeans loaded by the web application class loader
     unregisterMBeans();
     
+    // Unregister MXBean NotificationListeners/NotificationFilters/handbacks loaded by the web application class loader
+    unregisterMXBeanNotificationListeners();
+    
     // Deregister shutdown hooks - execute them immediately
     deregisterShutdownHooks();
     
@@ -848,7 +850,8 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
           error(ex);
         }
       }
-
+      
+      // Look for custom MBeans
       for(ObjectName objectName : allMBeanNames) {
         try {
           if (jettyJMXRemover != null && jettyJMXRemover.unregisterJettyJMXBean(objectName)) {
@@ -860,6 +863,11 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
             warn("MBean '" + objectName + "' was loaded in web application; unregistering");
             mBeanServer.unregisterMBean(objectName);
           }
+          /* 
+          else if(... instanceof NotificationBroadcasterSupport) {
+            unregisterNotificationListeners((NotificationBroadcasterSupport) ...);
+          }
+          */
         }
         catch(Exception e) { // MBeanRegistrationException / InstanceNotFoundException
           error(e);
@@ -868,6 +876,96 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     }
     catch (Exception e) { // MalformedObjectNameException
       error(e);
+    }
+  }
+
+  /** 
+     * Unregister MBeans loaded by the web application class loader,
+     * and MBean {@link NotificationListener}s loaded by the web application class loader
+     */
+  protected void unregisterMXBeanNotificationListeners() {
+    final Class<?> notificationEmitterSupportClass = findClass("sun.management.NotificationEmitterSupport");
+    
+    if(notificationEmitterSupportClass != null) { // Oracle JVM
+      final Class<?> platformComponentClass = findClass("java.lang.management.PlatformComponent");
+      final Method getMXBeans = findMethod(platformComponentClass, "getMXBeans", Class.class);
+
+      final Field listenerListField = findField(notificationEmitterSupportClass, "listenerList");
+      
+      final Class<?> listenerInfoClass = findClass("sun.management.NotificationEmitterSupport$ListenerInfo");
+      final Field listenerField = findField(listenerInfoClass, "listener");
+      final Field filterField = findField(listenerInfoClass, "filter");
+      final Field handbackField = findField(listenerInfoClass, "handback");
+
+      for(Object platformComponent : platformComponentClass.getEnumConstants()) {
+        try {
+          final List<PlatformManagedObject> mxBeans = 
+              (List<PlatformManagedObject>) getMXBeans.invoke(platformComponent, (Class<?>) null);
+          for(PlatformManagedObject mxBean : mxBeans) {
+            if(mxBean instanceof NotificationEmitter) {
+              final NotificationEmitter notificationEmitter = (NotificationEmitter) mxBean;
+              if(notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
+                List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList =
+                    (List<?>) getFieldValue(listenerListField, mxBean);
+                for(Object listenerInfo : listenerList) {
+                  final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
+                  final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
+                  final Objects handback = getFieldValue(handbackField, listenerInfo);
+
+                  if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
+                    // This is safe, as the implementation works with a copy, not altering the original
+                    try {
+                      notificationEmitter.removeNotificationListener(listener, filter, handback);
+                    }
+                    catch (ListenerNotFoundException e) { // Should never happen
+                      error(e);
+                    }
+                  }
+                }
+              }
+              else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
+                unregisterNotificationListeners((NotificationBroadcasterSupport) mxBean);
+              }
+            }
+          }
+        }
+        catch (IllegalAccessException ex) {
+          error(ex);
+        }
+        catch (InvocationTargetException ex) {
+          error(ex);
+        }
+      }
+      
+    }
+  }
+
+  protected void unregisterNotificationListeners(NotificationBroadcasterSupport mBean) {
+    final Field listenerListField = findField(NotificationBroadcasterSupport.class, "listenerList");
+    if(listenerListField != null) {
+      final Class<?> listenerInfoClass = findClass("javax.management.NotificationBroadcasterSupport$ListenerInfo");
+
+      final List<? /*javax.management.NotificationBroadcasterSupport.ListenerInfo*/ > listenerList =
+          getFieldValue(listenerListField, mBean);
+
+      final Field listenerField = findField(listenerInfoClass, "listener");
+      final Field filterField = findField(listenerInfoClass, "filter");
+      final Field handbackField = findField(listenerInfoClass, "handback");
+      for(Object listenerInfo : listenerList) {
+        final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
+        final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
+        final Objects handback = getFieldValue(handbackField, listenerInfo);
+
+        if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
+          // This is safe, as the implementation works with a copy, not altering the original
+          try {
+            mBean.removeNotificationListener(listener, filter, handback);
+          }
+          catch (ListenerNotFoundException e) { // Should never happen
+            error(e);
+          }
+        }
+      }
     }
   }
 
@@ -1253,9 +1351,8 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     try {
       final Field newTasksMayBeScheduled = findField(thread.getClass(), "newTasksMayBeScheduled");
       final Object queue = findField(thread.getClass(), "queue").get(thread); // java.lang.TaskQueue
-      final Method clear = queue.getClass().getDeclaredMethod("clear");
-      clear.setAccessible(true);
-
+      final Method clear = findMethod(queue.getClass(), "clear");
+      
       // Do what java.util.Timer.cancel() does
       //noinspection SynchronizationOnLocalVariableOrMethodParameter
       synchronized (queue) {
@@ -1678,6 +1775,22 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       return (T) field.get(obj);
     }
     catch (Exception ex) {
+      warn(ex);
+      // Silently ignore
+      return null;
+    }
+  }
+  
+  protected Method findMethod(Class<?> clazz, String methodName, Class... parameterTypes) {
+    if(clazz == null)
+      return null;
+
+    try {
+      final Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
+      method.setAccessible(true);
+      return method;
+    }
+    catch (NoSuchMethodException ex) {
       warn(ex);
       // Silently ignore
       return null;

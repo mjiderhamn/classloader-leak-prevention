@@ -54,7 +54,7 @@ class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
 
   @Override
   public String toString() {
-    return (name != null) ? (this.getClass().getName() + '[' + name + ']') :  
+    return (name != null) ? (this.getClass().getName() + '[' + name + "]@" + Integer.toHexString(System.identityHashCode(this))) :  
         super.toString();
   }
 }
