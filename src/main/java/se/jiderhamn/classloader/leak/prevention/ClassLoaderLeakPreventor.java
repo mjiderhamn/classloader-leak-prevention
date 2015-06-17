@@ -884,85 +884,105 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
      * and MBean {@link NotificationListener}s loaded by the web application class loader
      */
   protected void unregisterMXBeanNotificationListeners() {
-    final Class<?> notificationEmitterSupportClass = findClass("sun.management.NotificationEmitterSupport");
-    
-    if(notificationEmitterSupportClass != null) { // Oracle JVM
-      final Class<?> platformComponentClass = findClass("java.lang.management.PlatformComponent");
-      final Method getMXBeans = findMethod(platformComponentClass, "getMXBeans", Class.class);
-
+    final Class<?> platformComponentClass = findClass("java.lang.management.PlatformComponent");
+    final Method getMXBeans = findMethod(platformComponentClass, "getMXBeans", Class.class);
+    if(platformComponentClass != null && getMXBeans != null) { 
+      final Class<?> notificationEmitterSupportClass = findClass("sun.management.NotificationEmitterSupport");
       final Field listenerListField = findField(notificationEmitterSupportClass, "listenerList");
-      
+
       final Class<?> listenerInfoClass = findClass("sun.management.NotificationEmitterSupport$ListenerInfo");
       final Field listenerField = findField(listenerInfoClass, "listener");
       final Field filterField = findField(listenerInfoClass, "filter");
       final Field handbackField = findField(listenerInfoClass, "handback");
 
-      for(Object platformComponent : platformComponentClass.getEnumConstants()) {
-        try {
-          final List<PlatformManagedObject> mxBeans = 
-              (List<PlatformManagedObject>) getMXBeans.invoke(platformComponent, (Class<?>) null);
-          for(PlatformManagedObject mxBean : mxBeans) {
-            if(mxBean instanceof NotificationEmitter) {
-              final NotificationEmitter notificationEmitter = (NotificationEmitter) mxBean;
-              if(notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
-                List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList =
-                    (List<?>) getFieldValue(listenerListField, mxBean);
-                for(Object listenerInfo : listenerList) {
-                  final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
-                  final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-                  final Objects handback = getFieldValue(handbackField, listenerInfo);
+      final boolean canProcessNotificationEmitterSupport =
+          listenerListField != null && listenerInfoClass != null && 
+          listenerField != null && filterField != null && handbackField != null;
 
-                  if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
-                    // This is safe, as the implementation works with a copy, not altering the original
-                    try {
-                      notificationEmitter.removeNotificationListener(listener, filter, handback);
-                    }
-                    catch (ListenerNotFoundException e) { // Should never happen
-                      error(e);
+      if(! canProcessNotificationEmitterSupport)
+        warn("Unable to unregister NotificationEmitterSupport listeners, because details could not be found using reflection");
+
+      final Object[] platformComponents = platformComponentClass.getEnumConstants();
+      if(platformComponents != null) {
+        for(Object platformComponent : platformComponents) {
+          List<PlatformManagedObject> mxBeans = null;
+          try {
+            mxBeans = (List<PlatformManagedObject>) getMXBeans.invoke(platformComponent, (Class<?>) null);
+          }
+          catch (IllegalAccessException ex) {
+            error(ex);
+          }
+          catch (InvocationTargetException ex) {
+            error(ex);
+          }
+
+          if(mxBeans != null) { // We were able to retrieve MXBeans for this PlatformComponent
+            for(PlatformManagedObject mxBean : mxBeans) {
+              if(mxBean instanceof NotificationEmitter) { // The MXBean may have NotificationListeners
+                if(canProcessNotificationEmitterSupport && notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
+                  final List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList = getFieldValue(listenerListField, mxBean);
+                  if(listenerList != null) {
+                    for(Object listenerInfo : listenerList) { // Loop all listeners
+                      final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
+                      final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
+                      final Objects handback = getFieldValue(handbackField, listenerInfo);
+
+                      if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
+                        warn("Listener '" + listener + "' (or its filter or handback) of MXBean " + mxBean + 
+                            " of PlatformComponent " + platformComponents + " was loaded in web application; removing");
+                        // This is safe, as the implementation (as of this writing) works with a copy, not altering the original
+                        try {
+                          ((NotificationEmitter) mxBean).removeNotificationListener(listener, filter, handback);
+                        }
+                        catch (ListenerNotFoundException e) { // Should never happen
+                          error(e);
+                        }
+                      }
                     }
                   }
                 }
-              }
-              else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
-                unregisterNotificationListeners((NotificationBroadcasterSupport) mxBean);
+                else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
+                  unregisterNotificationListeners((NotificationBroadcasterSupport) mxBean);
+                }
               }
             }
           }
         }
-        catch (IllegalAccessException ex) {
-          error(ex);
-        }
-        catch (InvocationTargetException ex) {
-          error(ex);
-        }
       }
-      
     }
   }
 
+  /** 
+   * Unregister {@link NotificationListener}s from subclass of {@link NotificationBroadcasterSupport}, if listener,
+   * filter or handback is loaded by the web app classloader.
+   */
   protected void unregisterNotificationListeners(NotificationBroadcasterSupport mBean) {
     final Field listenerListField = findField(NotificationBroadcasterSupport.class, "listenerList");
     if(listenerListField != null) {
       final Class<?> listenerInfoClass = findClass("javax.management.NotificationBroadcasterSupport$ListenerInfo");
 
-      final List<? /*javax.management.NotificationBroadcasterSupport.ListenerInfo*/ > listenerList =
+      final List<? /*javax.management.NotificationBroadcasterSupport.ListenerInfo*/> listenerList =
           getFieldValue(listenerListField, mBean);
 
-      final Field listenerField = findField(listenerInfoClass, "listener");
-      final Field filterField = findField(listenerInfoClass, "filter");
-      final Field handbackField = findField(listenerInfoClass, "handback");
-      for(Object listenerInfo : listenerList) {
-        final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
-        final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-        final Objects handback = getFieldValue(handbackField, listenerInfo);
+      if(listenerList != null) {
+        final Field listenerField = findField(listenerInfoClass, "listener");
+        final Field filterField = findField(listenerInfoClass, "filter");
+        final Field handbackField = findField(listenerInfoClass, "handback");
+        for(Object listenerInfo : listenerList) {
+          final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
+          final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
+          final Objects handback = getFieldValue(handbackField, listenerInfo);
 
-        if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
-          // This is safe, as the implementation works with a copy, not altering the original
-          try {
-            mBean.removeNotificationListener(listener, filter, handback);
-          }
-          catch (ListenerNotFoundException e) { // Should never happen
-            error(e);
+          if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
+            warn("Listener '" + listener + "' (or its filter or handback) of MBean " + mBean + 
+                " was loaded in web application; removing");
+            // This is safe, as the implementation works with a copy, not altering the original
+            try {
+              mBean.removeNotificationListener(listener, filter, handback);
+            }
+            catch (ListenerNotFoundException e) { // Should never happen
+              error(e);
+            }
           }
         }
       }
