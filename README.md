@@ -1,5 +1,7 @@
 # Classloader leak prevention library
-[![Build Status](https://api.travis-ci.org/mjiderhamn/classloader-leak-prevention.png)](http://travis-ci.org/mjiderhamn/classloader-leak-prevention)
+[![Build Status](https://travis-ci.org/mjiderhamn/classloader-leak-prevention.svg)](http://travis-ci.org/mjiderhamn/classloader-leak-prevention)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/)
+[![License](https://img.shields.io/badge/license-Apache2-blue.svg?style=flat)](https://github.com/mjiderhamn/classloader-leak-prevention/blob/master/LICENSE.txt)
 
 If you want to avoid the dreaded `java.lang.OutOfMemoryError: Metaspace` / `PermGen space`, just include this library into your Java EE application, and add this context listener in your `web.xml`:
 
