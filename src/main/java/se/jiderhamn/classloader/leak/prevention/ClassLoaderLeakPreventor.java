@@ -635,6 +635,14 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       catch (ClassNotFoundException e) {
         // Ignore silently - class not present
       }
+
+      // Cause oracle.jdbc.driver.BlockSource.ThreadedCachingBlockSource.BlockReleaser to be started with contextClassLoader = system classloader  
+      try {
+        Class.forName("oracle.jdbc.driver.BlockSource$ThreadedCachingBlockSource$BlockReleaser");
+      }
+      catch (ClassNotFoundException e) {
+        // Ignore silently - class not present
+      }
     }
   }
 
