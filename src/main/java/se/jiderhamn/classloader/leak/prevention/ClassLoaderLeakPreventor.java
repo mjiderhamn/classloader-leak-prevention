@@ -191,6 +191,33 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
+  /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
+  private final DomainCombiner domainCombiner = new DomainCombiner() {
+    @Override
+    public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
+      if(assignedDomains != null && assignedDomains.length > 0) {
+        error("Unexpected assignedDomains - please report to developer of this library!");
+      }
+      
+      // Keep all ProtectionDomain not involving the web app classloader 
+      final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
+      for(ProtectionDomain protectionDomain : currentDomains) {
+        if(protectionDomain.getClassLoader() == null || 
+           ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
+          output.add(protectionDomain);
+        }
+      }
+      return output.toArray(new ProtectionDomain[output.size()]);
+    }
+  };
+
+  /**
+   * {@link AccessControlContext} that is used in {@link #contextInitialized(javax.servlet.ServletContextEvent)}.
+   * The motive is to avoid spawned threads from inheriting all the {@link java.security.ProtectionDomain}s of the 
+   * running code, since that will include the web app classloader.
+   */
+  private AccessControlContext accessControlContext;
+
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
   protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
 
@@ -260,6 +287,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       // Use doPrivileged() not to perform secured actions, but to avoid threads spawned inheriting the 
       // AccessControlContext of the current thread, since among the ProtectionDomains there will be one
       // (the top one) whose classloader is the web app classloader
+      accessControlContext = createAccessControlContext();
       AccessController.doPrivileged(new PrivilegedAction<Object>() {
         @Override
         public Object run() {
@@ -294,7 +322,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
           
           return null; // Nothing to return
         }
-      }, createAccessControlContext());
+      }, accessControlContext);
     }
     finally {
       // Reset original classloader
@@ -317,26 +345,6 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
    * running code, since that will include the web app classloader.
    */
   protected AccessControlContext createAccessControlContext() {
-
-    final DomainCombiner domainCombiner = new DomainCombiner() {
-      @Override
-      public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
-        if(assignedDomains != null && assignedDomains.length > 0) {
-          error("Unexpected assignedDomains - please report to developer of this library!");
-        }
-        
-        // Keep all ProtectionDomain not involving the web app classloader 
-        final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
-        for(ProtectionDomain protectionDomain : currentDomains) {
-          if(protectionDomain.getClassLoader() == null || 
-             ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
-            output.add(protectionDomain);
-          }
-        }
-        return output.toArray(new ProtectionDomain[output.size()]);
-      }
-    };
-
     try { // Try the normal way
       return new AccessControlContext(NO_DOMAINS_ACCESS_CONTROL_CONTEXT, domainCombiner);
     }
@@ -725,6 +733,28 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     stopThreads();
     
     destroyThreadGroups();
+    
+    // Since the DomainCombiner we have created is loaded by our classloader, we must make sure to remove reference to it
+    if(accessControlContext != null) { // Should always be true
+      final Field combinerField = findField(AccessControlContext.class, "combiner");
+
+      DomainCombiner domainCombiner;
+      try {
+        domainCombiner = accessControlContext.getDomainCombiner();
+      }
+      catch(SecurityException e) { // SecurityConstants.GET_COMBINER_PERMISSION not granted
+        domainCombiner = getFieldValue(combinerField, accessControlContext);
+      }
+      
+      if(domainCombiner == this.domainCombiner) { // This is our filtering DomainCombiner
+        try {
+          combinerField.set(accessControlContext, null);
+        }
+        catch (Exception e) {
+          error(e);
+        }
+      }
+    }
 
     // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads
     clearThreadLocalsOfAllThreads();
