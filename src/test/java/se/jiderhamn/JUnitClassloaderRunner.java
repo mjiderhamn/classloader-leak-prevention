@@ -1,5 +1,6 @@
 package se.jiderhamn;
 
+import java.io.File;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 
@@ -48,6 +49,9 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
      */
     private final boolean haltBeforeError;
     
+    /** Automatically generate a heap dump of classloader could not be garbage collected? */
+    private final boolean dumpHeapOnError;
+    
     /** Class that can be used to remove the leak */
     private Class<? extends Runnable> preventorClass;
     
@@ -62,6 +66,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       final Leaks leakAnn = testMethod.getAnnotation(Leaks.class);
       this.expectedLeak = (leakAnn == null || leakAnn.value()); // Default to true
       this.haltBeforeError = (leakAnn != null && leakAnn.haltBeforeError()); // Default to false
+      this.dumpHeapOnError = (leakAnn != null && leakAnn.dumpHeapOnError()); // Default to false
 
       this.preventorClass = preventorClass;
     }
@@ -127,11 +132,9 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
               Thread.currentThread().setContextClassLoader(clBefore);
               
               forceGc();
-              
-              if(haltBeforeError && weak.get() != null) {
-                waitForHeapDump();
-              }
-              
+
+              performErrorActions(weak, testName);
+
               assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
                   "despite running the leak preventor " + leakPreventorName, weak.get());
             }
@@ -147,15 +150,32 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
         }
         else {
-          if(haltBeforeError && weak.get() != null) {
-            waitForHeapDump();
-          }
+          performErrorActions(weak, testName);
 
           assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
         }
       }
     }
-    
+
+    private void performErrorActions(WeakReference<RedefiningClassLoader> weak, String testName) throws InterruptedException {
+      if(weak.get() != null) { // Still not garbage collected
+        if(dumpHeapOnError) {
+          try {
+            File heapDump = new File(testName + ".bin");
+            HeapDumper.dumpHeap(heapDump, false);
+            System.out.println("Heaped dumped to " + heapDump.getAbsolutePath());
+          }
+          catch (ClassNotFoundException e) {
+            System.out.println("Unable to dump heap - not Sun/Oracle JVM?");
+          }
+        }
+
+        if(haltBeforeError) {
+          waitForHeapDump();
+        }
+      }
+    }
+
     /** Make sure Garbage Collection has been run */
     private static void forceGc() {
       Object o = new Object();

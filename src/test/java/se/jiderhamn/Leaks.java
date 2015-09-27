@@ -15,4 +15,10 @@ public @interface Leaks {
    */
   boolean haltBeforeError() default false;
   
+  /** 
+   * Set this to true to automatically generate a heap dump of classloader could not be garbage collected. Only works
+   * on Sun/Oracle JVM. 
+   */
+  boolean dumpHeapOnError() default false;
+  
 }
