@@ -7,7 +7,7 @@
   </parent>
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.13.1-SNAPSHOT</version>
+  <version>1.14.0</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak prevention</name>
   <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
