@@ -71,6 +71,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       this.preventorClass = preventorClass;
     }
 
+    @SuppressWarnings("UnusedAssignment")
     @Override
     public void evaluate() throws Throwable {
       final Class<?> junitClass = originalMethod.getDeclaringClass();
@@ -160,14 +161,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     private void performErrorActions(WeakReference<RedefiningClassLoader> weak, String testName) throws InterruptedException {
       if(weak.get() != null) { // Still not garbage collected
         if(dumpHeapOnError) {
-          try {
-            File heapDump = new File(testName + ".bin");
-            HeapDumper.dumpHeap(heapDump, false);
-            System.out.println("Heaped dumped to " + heapDump.getAbsolutePath());
-          }
-          catch (ClassNotFoundException e) {
-            System.out.println("Unable to dump heap - not Sun/Oracle JVM?");
-          }
+          dumpHeap(testName);
         }
 
         if(haltBeforeError) {
@@ -190,6 +184,18 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump aquirement");
       // TODO: Inform about ZombieMarker
       Thread.sleep(HALT_TIME_S * 1000);
+    }
+  }
+
+  /** Create heap dump in file with same name as the test */
+  private static void dumpHeap(String testName) {
+    try {
+      File heapDump = new File(testName + ".bin");
+      HeapDumper.dumpHeap(heapDump, false);
+      System.out.println("Heaped dumped to " + heapDump.getAbsolutePath());
+    }
+    catch (ClassNotFoundException e) {
+      System.out.println("Unable to dump heap - not Sun/Oracle JVM?");
     }
   }
 
