@@ -966,7 +966,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
                     for(Object listenerInfo : listenerList) { // Loop all listeners
                       final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
                       final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-                      final Objects handback = getFieldValue(handbackField, listenerInfo);
+                      final Object handback = getFieldValue(handbackField, listenerInfo);
 
                       if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
                         warn("Listener '" + listener + "' (or its filter or handback) of MXBean " + mxBean + 
@@ -1012,7 +1012,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
         for(Object listenerInfo : listenerList) {
           final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
           final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-          final Objects handback = getFieldValue(handbackField, listenerInfo);
+          final Object handback = getFieldValue(handbackField, listenerInfo);
 
           if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
             warn("Listener '" + listener + "' (or its filter or handback) of MBean " + mBean + 
