@@ -280,8 +280,6 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     mayBeJBoss = isJBoss();
     isOracleJRE = isOracleJRE();
     
-    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-
     info("Initializing context by loading some known offenders with system classloader");
     
      // Switch to system classloader in before we load/call some JRE stuff that will cause 
@@ -303,6 +301,8 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
           initSecurityPolicy();
     
           initDocumentBuilderFactory();
+        
+          replaceDOMNormalizerSerializerAbortException();
           
           initDatatypeConverterImpl();
     
@@ -524,7 +524,50 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       error(ex);
     }
   }
+
+  /**
+   * As reported at https://github.com/mjiderhamn/classloader-leak-prevention/issues/36, invoking
+   * {@code DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument().normalizeDocument();} or 
+   * <code>
+   *   Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+   *   DOMImplementationLS implementation = (DOMImplementationLS)document.getImplementation();
+   *   implementation.createLSSerializer().writeToString(document);
+   * </code> may trigger leaks caused by the static fields {@link com.sun.org.apache.xerces.internal.dom.DOMNormalizer#abort} and
+   * {@link com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl#abort} respectively keeping stacktraces/backtraces
+   * that may include references to classes loaded by our web application.
+   * 
+   * Since the {@link java.lang.Throwable#backtrace} itself cannot be accessed via reflection (see 
+   * http://bugs.java.com/view_bug.do?bug_id=4496456) we need to replace the with new one without any stack trace.
+   */
+  protected void replaceDOMNormalizerSerializerAbortException() {
+    final RuntimeException abort = constructRuntimeExceptionWithoutStackTrace("abort", null);
+    if(abort != null) {
+      final Field normalizerAbort = findFieldOfClass("com.sun.org.apache.xerces.internal.dom.DOMNormalizer", "abort");
+      if(normalizerAbort != null)
+        setFinalStaticField(normalizerAbort, abort);
+
+      final Field serializerAbort = findFieldOfClass("com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl", "abort");
+      if(serializerAbort != null)
+        setFinalStaticField(serializerAbort, abort);
+    }
+  }
   
+  /** Construct a new {@link RuntimeException} without any stack trace, in order to avoid any references back to this class */
+  protected RuntimeException constructRuntimeExceptionWithoutStackTrace(String message, Throwable cause) {
+    try {
+      final Constructor<RuntimeException> constructor = 
+          RuntimeException.class.getDeclaredConstructor(String.class, Throwable.class, Boolean.TYPE, Boolean.TYPE);
+      constructor.setAccessible(true);
+      return constructor.newInstance(message, cause, true, false /* disable stack trace */);
+    }
+    catch (Throwable e) { // InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException
+      warn("Unable to construct RuntimeException without stack trace. Please report issue to developer of this library.");
+      warn(e);
+      return null;
+    }
+  }
+
+
   /**
    * To skip this step override this method in a subclass and make that subclass method empty.
    * 
@@ -970,7 +1013,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 
                       if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
                         warn("Listener '" + listener + "' (or its filter or handback) of MXBean " + mxBean + 
-                            " of PlatformComponent " + platformComponents + " was loaded in web application; removing");
+                            " of PlatformComponent " + platformComponent + " was loaded in web application; removing");
                         // This is safe, as the implementation (as of this writing) works with a copy, not altering the original
                         try {
                           ((NotificationEmitter) mxBean).removeNotificationListener(listener, filter, handback);
@@ -1872,6 +1915,32 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       warn(ex);
       // Silently ignore
       return null;
+    }
+  }
+  
+  protected void setFinalStaticField(Field field, Object newValue) {
+    // Allow modification of final field 
+    try {
+      Field modifiersField = Field.class.getDeclaredField("modifiers");
+      modifiersField.setAccessible(true);
+      modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
+    }
+    catch (NoSuchFieldException e) {
+      warn("Unable to get 'modifiers' field of java.lang.Field");
+    }
+    catch (IllegalAccessException e) {
+      warn("Unable to set 'modifiers' field of java.lang.Field");
+    }
+    catch (Throwable t) {
+      warn(t);
+    }
+
+    // Update the field
+    try {
+      field.set(null, newValue);
+    }
+    catch (Throwable e) {
+      error("Error setting value of " + field + " to " + newValue);
     }
   }
   
