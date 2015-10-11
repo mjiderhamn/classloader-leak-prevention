@@ -150,7 +150,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
           }
 
         }
-        else {
+        else { // We did not expect a leak
           performErrorActions(weak, testName);
 
           assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());

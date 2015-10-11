@@ -117,6 +117,9 @@ In order to confirm that a piece of code does <strong>not</strong> cause leaks, 
 ```
 In this case, the test passes only in case a leak isn't triggered.
 
+In case you want a heap dump automatically generated when a leak is detected, you can use `@Leaks(dumpHeapOnError = true)` and then watch stdout 
+for the name of the heap dump file.
+
 You can also confirm that a leak workaround has the expected effect, by annotating the class with <code>se.jiderhamn.LeakPreventor</code>, and set its value to a <code>Runnable</code> that fixes the leak.
 ```java
 @RunWith(JUnitClassloaderRunner.class)
