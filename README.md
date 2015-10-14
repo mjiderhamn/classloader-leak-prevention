@@ -22,7 +22,7 @@ The library is available in Maven Central with the following details:
 <dependency>
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.14.1</version>
+  <version>1.15.0</version>
 </dependency>
 ```
 
@@ -143,6 +143,18 @@ In this case, a successfull test means two things: 1) the <code>@Test</code> met
 NOTE: It is not yet determined whether multiple test cases in the same class works, so you should stick to one single <code>@Test</code> method per class for now.
 
 NOTE: The test framework is not included in the runtime JAR - you need to grab it <a href="https://github.com/mjiderhamn/classloader-leak-prevention">from GitHub</a>.
+
+### Maven
+The test framework of the library is available in Maven Central with the following details:
+
+```xml
+<dependency>
+  <groupId>se.jiderhamn</groupId>
+  <artifactId>classloader-leak-prevention</artifactId>
+  <version>1.15.0</version>
+  <type>test-jar</type>
+</dependency>
+```
 
 ## License
 
