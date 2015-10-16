@@ -2379,26 +2379,31 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     public JettyJMXRemover(ClassLoader classLoader) throws Exception {
       // First we need access to the MBeanContainer to access the beans
       // WebAppContext webappContext = (WebAppContext)servletContext;
-      final Object webappContext = Class.forName("org.eclipse.jetty.webapp.WebAppClassLoader")
-          .getMethod("getContext").invoke(classLoader);
+      final Object webappContext = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.webapp.WebAppClassLoader")
+              .getMethod("getContext").invoke(classLoader);
       if(webappContext == null)
         return;
       
       // Server server = (Server)webappContext.getServer();
-      final Class<?> webAppContextClass = Class.forName("org.eclipse.jetty.webapp.WebAppContext");
+      final Class<?> webAppContextClass = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.webapp.WebAppContext");
       final Object server = webAppContextClass.getMethod("getServer").invoke(webappContext);
       if(server == null)
         return;
 
       // MBeanContainer beanContainer = (MBeanContainer)server.getBean(MBeanContainer.class);
-      final Class<?> mBeanContainerClass = Class.forName("org.eclipse.jetty.jmx.MBeanContainer");
-      beanContainer = Class.forName("org.eclipse.jetty.server.Server")
-          .getMethod("getBean", Class.class).invoke(server, mBeanContainerClass);
 	  
+      final Class<?> mBeanContainerClass = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.jmx.MBeanContainer");
+      beanContainer = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.server.Server")
+              .getMethod("getBean", Class.class).invoke(server, mBeanContainerClass);
       // Now we store all objects that belong to the web application and that will be wrapped by MBeans in a list
       if (beanContainer != null) {
         findBeanMethod = mBeanContainerClass.getMethod("findBean", ObjectName.class);
-        removeBeanMethod = mBeanContainerClass.getMethod("removeBean", Object.class);
+        try {
+          removeBeanMethod = mBeanContainerClass.getMethod("removeBean", Object.class);
+        } catch (NoSuchMethodException e) {
+          warn("MBeanContainer.removeBean() method can not be found. giving up");
+          return;
+        }
 
         objectsWrappedWithMBean = new ArrayList<Object>();
         // SessionHandler sessionHandler = webappContext.getSessionHandler();
@@ -2407,14 +2412,14 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
           objectsWrappedWithMBean.add(sessionHandler);
   
           // SessionManager sessionManager = sessionHandler.getSessionManager();
-          final Object sessionManager = Class.forName("org.eclipse.jetty.server.session.SessionHandler")
-              .getMethod("getSessionManager").invoke(sessionHandler);
+          final Object sessionManager = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.server.session.SessionHandler")
+                  .getMethod("getSessionManager").invoke(sessionHandler);
           if(sessionManager != null) {
             objectsWrappedWithMBean.add(sessionManager);
 
             // SessionIdManager sessionIdManager = sessionManager.getSessionIdManager();
-            final Object sessionIdManager = Class.forName("org.eclipse.jetty.server.SessionManager")
-                .getMethod("getSessionIdManager").invoke(sessionManager);
+            final Object sessionIdManager = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.server.SessionManager")
+                    .getMethod("getSessionIdManager").invoke(sessionManager);
             objectsWrappedWithMBean.add(sessionIdManager);
           }
         }
@@ -2426,11 +2431,11 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
         final Object servletHandler = webAppContextClass.getMethod("getServletHandler").invoke(webappContext);
         if(servletHandler != null) {
           objectsWrappedWithMBean.add(servletHandler);
-  
-          final Class<?> servletHandlerClass = Class.forName("org.eclipse.jetty.servlet.ServletHandler");
+
+          final Class<?> servletHandlerClass = getClassFromWebApplicationParentClassLoader("org.eclipse.jetty.servlet.ServletHandler");
           // Object[] servletMappings = servletHandler.getServletMappings();
           objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServletMappings").invoke(servletHandler)));
-  
+
           // Object[] servlets = servletHandler.getServlets();
           objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServlets").invoke(servletHandler)));
         }
@@ -2466,5 +2471,9 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 		    return false;
 	    }
     }
-  }  
+
+    Class getClassFromWebApplicationParentClassLoader(String className) throws ClassNotFoundException {
+      return Class.forName(className, false, getWebApplicationClassLoader().getParent());
+    }
+  }
 }
