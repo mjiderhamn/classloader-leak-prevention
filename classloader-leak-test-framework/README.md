@@ -46,7 +46,7 @@ and then watch stdout for the name of the heap dump file.
 
 In the heap dump, you can look for instances of `se.jiderhamn.classloader.ZombieMarker` and track their path to GC root.
 
-## Verifying prevention measurements
+## Verifying prevention measures
 
 You can also confirm that a leak workaround has the expected effect, by annotating the class with 
 `se.jiderhamn.classloader.leak.LeakPreventor`, and set its value to a `Runnable` that fixes the leak.
