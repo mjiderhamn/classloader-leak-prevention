@@ -60,7 +60,7 @@
     <dependency>
       <groupId>se.jiderhamn</groupId>
       <artifactId>classloader-leak-test-framework</artifactId>
-      <version>1.0.0-SNAPSHOT</version>
+      <version>1.0.0</version>
       <scope>test</scope>
     </dependency>
     <!-- Dependencies for creating tests -->
