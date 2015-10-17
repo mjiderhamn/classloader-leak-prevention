@@ -1,4 +1,4 @@
-# Classloader leak prevention library
+# Classloader Leak Prevention library
 [![Build Status](https://travis-ci.org/mjiderhamn/classloader-leak-prevention.svg)](http://travis-ci.org/mjiderhamn/classloader-leak-prevention)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/)
 [![License](https://img.shields.io/badge/license-Apache2-blue.svg?style=flat)](https://github.com/mjiderhamn/classloader-leak-prevention/blob/master/LICENSE.txt)
@@ -84,78 +84,8 @@ The context listener has a number of settings that can be configured with contex
 
 ## Classloader leak detection / test framework
 
-Another part of the project, is a framework that allows the creation of <a href="http://junit.org/">JUnit</a> tests, that confirms classloader leaks in third party APIs. It is also possible to test leak prevention mechanisms to confirm that the leak really is avoided.
-
-For this purpose, I have create a JUnit runner, <code>se.jiderhamn.JUnitClassloaderRunner</code>, which is used to run each test in a separate classloader, that is then attempted to be garbage collected. The default assumption is that the test case will create a leak. A basic example would look like this
-
-```java
-package se.jiderhamn.tests;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-
-@RunWith(JUnitClassloaderRunner.class)
-public class LeakConfirmingTest {
-  
-  @Test
-  public void triggerLeak() {
-    // Do something that triggers the suspected leak
-  }
-}
-```
-
-In case the test passes, it means the code inside the tested method does in fact cause classloader leaks.
-
-In order to confirm that a piece of code does <strong>not</strong> cause leaks, add the <code>se.jiderhamn.Leaks</code> annotation, with a value of `false`.
-```java
-  @Test
-  @Leaks(false) // Should not leak
-  public void doesNotTriggerLeak() {
-    // Do something that should not trigger any leaks
-  }
-```
-In this case, the test passes only in case a leak isn't triggered.
-
-In case you want a heap dump automatically generated when a leak is detected, you can use `@Leaks(dumpHeapOnError = true)` and then watch stdout 
-for the name of the heap dump file.
-
-You can also confirm that a leak workaround has the expected effect, by annotating the class with <code>se.jiderhamn.LeakPreventor</code>, and set its value to a <code>Runnable</code> that fixes the leak.
-```java
-@RunWith(JUnitClassloaderRunner.class)
-@LeakPreventor(LeakThatCanBeFixedText.Preventor.class)
-public class LeakThatCanBeFixedText {
-  
-  @Test
-  public void triggerLeak() {
-    // Do something that triggers the suspected leak
-  }
-  
-  public static class Preventor implements Runnable {
-    public void run() {
-      // Run cleanup code, that fixed the leak and allows the classloader to be GC:ed
-    }
-  }
-}
-```
-In this case, a successfull test means two things: 1) the <code>@Test</code> method does cause a leak and 2) the leak is prevented by the code in the <code>Preventor</code>. That is, the test will fail if either there is no leak to begin with, or the leak is still present after executing the <code>Preventor</code>.
-
-NOTE: It is not yet determined whether multiple test cases in the same class works, so you should stick to one single <code>@Test</code> method per class for now.
-
-NOTE: The test framework is not included in the runtime JAR - you need to grab it <a href="https://github.com/mjiderhamn/classloader-leak-prevention">from GitHub</a>.
-
-### Maven
-The test framework of the library is available in Maven Central with the following details:
-
-```xml
-<dependency>
-  <groupId>se.jiderhamn</groupId>
-  <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.15.0</version>
-  <type>test-jar</type>
-</dependency>
-```
+The test framework now has its own Maven module and its own documentation, see [classloader-leak-test-framework](classloader-leak-test-framework)
 
 ## License
 
-This project is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache 2 license</a>, which allows you to include modified versions of the code in your distributed software, without having to release your source code.
+This project is licensed under the [Apache 2 license](http://www.apache.org/licenses/LICENSE-2.0), which allows you to include modified versions of the code in your distributed software, without having to release your source code.

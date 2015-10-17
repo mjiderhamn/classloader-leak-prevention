@@ -5,7 +5,7 @@
   <artifactId>classloader-leak-prevention</artifactId>
   <version>1.15.1-SNAPSHOT</version>
   <packaging>jar</packaging>
-  <name>ClassLoader leak prevention</name>
+  <name>ClassLoader Leak Prevention library</name>
   <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>
   

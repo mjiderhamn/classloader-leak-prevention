@@ -6,7 +6,7 @@
   <version>1.0.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak test framework</name>
-  <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
+  <description>Test framework to confirm suspected classloader leak, and create heap dumps to track the leaks</description>
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>
   
   <scm>
