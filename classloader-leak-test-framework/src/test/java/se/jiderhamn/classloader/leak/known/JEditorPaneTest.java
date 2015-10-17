@@ -1,4 +1,4 @@
-package se.jiderhamn.tests;
+package se.jiderhamn.classloader.leak.known;
 
 import javax.swing.*;
 

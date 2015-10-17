@@ -1,4 +1,4 @@
-package se.jiderhamn.tests;
+package se.jiderhamn.classloader.leak.accused;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;

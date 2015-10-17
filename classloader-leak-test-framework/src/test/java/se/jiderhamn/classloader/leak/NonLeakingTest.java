@@ -1,9 +1,7 @@
-package se.jiderhamn.tests;
+package se.jiderhamn.classloader.leak;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
-import se.jiderhamn.classloader.leak.Leaks;
 
 /**
  * Test that isn't supposed to leak, used to test the utility classes.

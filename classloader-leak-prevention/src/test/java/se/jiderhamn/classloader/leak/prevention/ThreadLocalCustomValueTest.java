@@ -1,10 +1,9 @@
-package se.jiderhamn.tests;
+package se.jiderhamn.classloader.leak.prevention;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
 import se.jiderhamn.classloader.leak.LeakPreventor;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 /**
  * ThreadLocals work the same way as WeakHashMaps; from http://docs.oracle.com/javase/6/docs/api/java/util/WeakHashMap.html

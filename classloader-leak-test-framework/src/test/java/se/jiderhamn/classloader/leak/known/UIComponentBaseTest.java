@@ -1,4 +1,4 @@
-package se.jiderhamn.tests;
+package se.jiderhamn.classloader.leak.known;
 
 import javax.el.BeanELResolver;
 import javax.el.ELContext;

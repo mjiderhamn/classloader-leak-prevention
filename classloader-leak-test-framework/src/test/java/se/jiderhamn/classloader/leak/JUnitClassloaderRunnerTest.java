@@ -1,11 +1,9 @@
-package se.jiderhamn.classloader.leak.prevention;
+package se.jiderhamn.classloader.leak;
 
 import java.io.FileNotFoundException;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
-import se.jiderhamn.classloader.leak.Leaks;
 
 /**
  * This test makes sure that the {@link JUnitClassloaderRunner} does not keep a reference to the classloader in case
