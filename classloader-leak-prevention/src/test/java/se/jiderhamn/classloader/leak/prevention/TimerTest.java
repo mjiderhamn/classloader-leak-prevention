@@ -21,7 +21,7 @@ public class TimerTest {
    * Having a custom ThreadLocal with at non-custom value does not leak, since the key in the ThreadLocalMap is weak
    */
   @Test
-  public void setValueOfCustomThreadLocal() throws IllegalAccessException, NoSuchFieldException {
+  public void createTimer() throws IllegalAccessException, NoSuchFieldException {
     new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
   }
   
