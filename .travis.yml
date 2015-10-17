@@ -1,2 +1,3 @@
 language: java
 sudo: false
+script: cd classloader-leak-prevention && mvn test
