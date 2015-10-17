@@ -4,7 +4,7 @@ import javax.swing.*;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
     
 /**
  * Confirm leak caused by JEditorPane

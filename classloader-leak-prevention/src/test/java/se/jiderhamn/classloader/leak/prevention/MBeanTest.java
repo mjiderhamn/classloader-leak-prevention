@@ -6,8 +6,8 @@ import javax.management.*;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.LeakPreventor;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.LeakPreventor;
 
 /**
  * Verify that custom MBean causes leak that can be prevented

@@ -1,9 +1,9 @@
-package se.jiderhamn;
+package se.jiderhamn.classloader;
 
 import org.apache.bcel.classfile.JavaClass;
 
 /** Classloader that redefines classes even if existing in parent */
-class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
+public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   
   /** Override parents default and include  */
   public static final String[] DEFAULT_IGNORED_PACKAGES = {
@@ -16,15 +16,15 @@ class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   
   private final String name;
 
-  RedefiningClassLoader(ClassLoader parent) {
+  public RedefiningClassLoader(ClassLoader parent) {
     this(parent, null);
   }
 
-  RedefiningClassLoader() {
+  public RedefiningClassLoader() {
     this((String) null);
   }
 
-  RedefiningClassLoader(ClassLoader parent, String name) {
+  public RedefiningClassLoader(ClassLoader parent, String name) {
     super(parent, DEFAULT_IGNORED_PACKAGES);
     this.name = name;
   }

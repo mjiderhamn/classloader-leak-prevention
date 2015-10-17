@@ -3,9 +3,9 @@ package se.jiderhamn.classloader.leak.prevention;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.LeakPreventor;
-import se.jiderhamn.Leaks;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.LeakPreventor;
+import se.jiderhamn.classloader.leak.Leaks;
 
 /**
  * Test case to verify Oracle JDBC threads are handled properly

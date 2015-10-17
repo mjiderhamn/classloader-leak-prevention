@@ -2,8 +2,8 @@ package se.jiderhamn.tests;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.Leaks;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.Leaks;
 
 /**
  * @author Mattias Jiderhamn

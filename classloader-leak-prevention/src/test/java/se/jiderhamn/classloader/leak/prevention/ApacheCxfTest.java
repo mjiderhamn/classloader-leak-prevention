@@ -3,8 +3,8 @@ package se.jiderhamn.classloader.leak.prevention;
 import org.apache.cxf.transport.http.CXFAuthenticator;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.LeakPreventor;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.LeakPreventor;
 
 /**
  * Test that the leak caused by CXF custom java.net.Authenticator is cleared.

@@ -1,18 +1,18 @@
-package se.jiderhamn;
+package se.jiderhamn.classloader.leak;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 
+import org.junit.Assert;
 import org.junit.internal.runners.statements.InvokeMethod;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
 import org.junit.runners.model.TestClass;
-
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import se.jiderhamn.HeapDumper;
+import se.jiderhamn.classloader.RedefiningClassLoader;
 
 /**
  * @author Mattias Jiderhamn
@@ -114,7 +114,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
-          assertNotNull("ClassLoader has been garbage collected, while test is expected to leak", redefiningClassLoader);
+          Assert.assertNotNull("ClassLoader has been garbage collected, while test is expected to leak", redefiningClassLoader);
 
           if(redefiningClassLoader != null && // Always true, otherwise assertion failure above
              preventorClass != null) {
@@ -136,7 +136,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
 
               performErrorActions(weak, testName);
 
-              assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
+              Assert.assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
                   "despite running the leak preventor " + leakPreventorName, weak.get());
             }
             catch (Exception e) {
@@ -153,7 +153,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         else { // We did not expect a leak
           performErrorActions(weak, testName);
 
-          assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
+          Assert.assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
         }
       }
     }

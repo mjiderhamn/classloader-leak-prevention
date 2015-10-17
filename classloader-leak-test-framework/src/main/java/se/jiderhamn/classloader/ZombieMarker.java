@@ -1,4 +1,4 @@
-package se.jiderhamn;
+package se.jiderhamn.classloader;
 
 /**
  * Class used to help identify leaked class loaders in a heap dump.

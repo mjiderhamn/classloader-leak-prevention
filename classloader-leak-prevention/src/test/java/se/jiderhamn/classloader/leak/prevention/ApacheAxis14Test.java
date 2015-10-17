@@ -3,8 +3,8 @@ package se.jiderhamn.classloader.leak.prevention;
 import org.apache.axis.utils.XMLUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.LeakPreventor;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.LeakPreventor;
 
 /**
  * @author Mattias Jiderhamn

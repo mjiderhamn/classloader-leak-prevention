@@ -5,8 +5,8 @@ import javax.el.*;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
-import se.jiderhamn.LeakPreventor;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.LeakPreventor;
 
 /**
  * Test that the leak caused by BeanELResolver is cleared.

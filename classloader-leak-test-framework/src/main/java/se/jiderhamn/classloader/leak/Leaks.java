@@ -1,4 +1,4 @@
-package se.jiderhamn;
+package se.jiderhamn.classloader.leak;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

@@ -2,10 +2,10 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>se.jiderhamn</groupId>
-  <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.15.1-SNAPSHOT</version>
+  <artifactId>classloader-leak-test-framework</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
   <packaging>jar</packaging>
-  <name>ClassLoader leak prevention</name>
+  <name>ClassLoader leak test framework</name>
   <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>
   
@@ -56,21 +56,18 @@
       <artifactId>servlet-api</artifactId>
       <version>2.5</version>
     </dependency>
-    <!-- Dependency on test framework -->
-    <dependency>
-      <groupId>se.jiderhamn</groupId>
-      <artifactId>classloader-leak-test-framework</artifactId>
-      <version>1.0.0-SNAPSHOT</version>
-      <scope>test</scope>
-    </dependency>
-    <!-- TODO Clean up -->
     <!-- Dependencies for creating tests -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.12</version>
-      <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.apache.bcel</groupId>
+      <artifactId>bcel</artifactId>
+      <version>5.2</version>
+    </dependency>
+    <!-- TODO Clean up -->
     <!-- Required by some of the tested APIs --> 
     <dependency>
       <groupId>commons-logging</groupId>

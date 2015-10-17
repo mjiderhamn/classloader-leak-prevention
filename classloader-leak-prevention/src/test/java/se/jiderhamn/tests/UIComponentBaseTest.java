@@ -7,7 +7,7 @@ import javax.faces.component.UIComponentBase;
 import com.sun.faces.el.ELContextImpl;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import se.jiderhamn.JUnitClassloaderRunner;
+import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
 
 /**
  * Test case that demonstrates the leak in https://java.net/jira/browse/JAVASERVERFACES-2746
