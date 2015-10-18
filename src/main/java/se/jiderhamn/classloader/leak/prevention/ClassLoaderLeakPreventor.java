@@ -2474,10 +2474,10 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 
     Class findJettyClass(String className) throws ClassNotFoundException {
       try {
-        return Class.forName(className);
+        return Class.forName(className, false, getWebApplicationClassLoader().getParent());
       } catch (ClassNotFoundException e1) {
         try {
-          return Class.forName(className, false, getWebApplicationClassLoader().getParent());
+          return Class.forName(className);
         } catch (ClassNotFoundException e2) {
           e2.addSuppressed(e1);
           throw e2;
