@@ -22,7 +22,7 @@ The library is available in Maven Central with the following details:
 <dependency>
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.15.0</version>
+  <version>1.15.1</version>
 </dependency>
 ```
 
