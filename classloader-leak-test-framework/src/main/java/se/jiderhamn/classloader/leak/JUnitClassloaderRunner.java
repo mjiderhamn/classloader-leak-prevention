@@ -3,6 +3,7 @@ package se.jiderhamn.classloader.leak;
 import java.io.File;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
+import java.net.URL;
 
 import org.junit.Assert;
 import org.junit.internal.runners.statements.InvokeMethod;
@@ -35,7 +36,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     return new SeparateClassLoaderInvokeMethod(method, test, preventorClass);
   }
   
-  private static class SeparateClassLoaderInvokeMethod extends InvokeMethod {
+  private class SeparateClassLoaderInvokeMethod extends InvokeMethod {
     
     /** The method to run for triggering potential leak, or verify non-leak */
     private final Method originalMethod;
@@ -169,33 +170,65 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         }
       }
     }
+  }
 
-    /** Make sure Garbage Collection has been run */
-    private static void forceGc() {
-      Object o = new Object();
-      WeakReference<Object> ref = new WeakReference<Object>(o);
-      o = null; // Make available for garbage collection
-      while(ref.get() != null) { // Until garbage collection has actually been run
-        System.gc();
-      }
-    }
-
-    private static void waitForHeapDump() throws InterruptedException {
-      System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump aquirement");
-      // TODO: Inform about ZombieMarker
-      Thread.sleep(HALT_TIME_S * 1000);
+  /** Make sure Garbage Collection has been run */
+  private static void forceGc() {
+    Object o = new Object();
+    WeakReference<Object> ref = new WeakReference<Object>(o);
+    o = null; // Make available for garbage collection
+    while(ref.get() != null) { // Until garbage collection has actually been run
+      System.gc();
     }
   }
 
+  private static void waitForHeapDump() throws InterruptedException {
+    System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump aquirement");
+    // TODO: Inform about ZombieMarker
+    Thread.sleep(HALT_TIME_S * 1000);
+  }
+
   /** Create heap dump in file with same name as the test */
-  private static void dumpHeap(String testName) {
+  private void dumpHeap(String testName) {
+    final File surefireReports = getSurefireReportsDirectory();
     try {
-      File heapDump = new File(testName + ".bin");
+      File heapDump = (surefireReports != null) ? new File(surefireReports, testName + ".bin") : 
+          new File(testName + ".bin");
       HeapDumper.dumpHeap(heapDump, false);
       System.out.println("Heaped dumped to " + heapDump.getAbsolutePath());
     }
     catch (ClassNotFoundException e) {
       System.out.println("Unable to dump heap - not Sun/Oracle JVM?");
+    }
+  }
+
+  /** 
+   * Try to find "target/surefire-reports" directory, assuming this is a Maven build. Returns null it not found,
+   * not writable or other error. */
+  private File getSurefireReportsDirectory() {
+    return getSurefireReportsDirectory(getTestClass().getJavaClass());
+  }
+  
+  /** 
+   * Try to find "target/surefire-reports" directory, assuming this is a Maven build. Returns null it not found,
+   * not writable or other error. */
+  private static File getSurefireReportsDirectory(final Class<?> clazz) {
+    try {
+      final String absolutePath = clazz.getResource(clazz.getSimpleName() + ".class").toString();
+      final String relativePath = clazz.getName().replace('.', '/') + ".class";
+      final String classPath = absolutePath.substring(0, absolutePath.length() - relativePath.length());
+      
+     // Handle JAR files
+    if(classPath.startsWith("jar:")) {
+      return null;
+    }
+      final File dir = new File(new URL(classPath).toURI());
+      final File sureFireReports = new File(dir.getParent(), "surefire-reports");
+      return sureFireReports.exists() && sureFireReports.isDirectory() && sureFireReports.canWrite() ? sureFireReports :
+          null;
+    }
+    catch (Exception e) {
+      return null;
     }
   }
 
