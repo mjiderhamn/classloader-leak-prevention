@@ -28,6 +28,11 @@ public class HeapDumper {
    * @param live Dump only live objects?
    */
   public static void dumpHeap(File file, boolean live) throws ClassNotFoundException {
+    if(file.exists()) {
+      System.err.println("Cannot dump heap to '" + file + "' - file exists!");
+      return;
+    }
+
     try {
       getHotSpotDiagnosticMBean().dumpHeap(file.getAbsolutePath(), live);
     } catch (RuntimeException e) {
