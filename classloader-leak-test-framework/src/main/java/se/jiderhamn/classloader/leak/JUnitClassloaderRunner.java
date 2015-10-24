@@ -15,11 +15,13 @@ import org.junit.runners.model.TestClass;
 import se.jiderhamn.HeapDumper;
 import se.jiderhamn.classloader.RedefiningClassLoader;
 
+import static se.jiderhamn.HeapDumper.HEAP_DUMP_EXTENSION;
+
 /**
  * @author Mattias Jiderhamn
  */
 public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
-  
+
   /** Number of seconds to halt to allow for heap dump aquirement, if that option is enabled */
   private static final int HALT_TIME_S = 10;
 
@@ -192,8 +194,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
   private void dumpHeap(String testName) {
     final File surefireReports = getSurefireReportsDirectory();
     try {
-      File heapDump = (surefireReports != null) ? new File(surefireReports, testName + ".bin") : 
-          new File(testName + ".bin");
+      File heapDump = (surefireReports != null) ? new File(surefireReports, testName + HEAP_DUMP_EXTENSION) : 
+          new File(testName + HEAP_DUMP_EXTENSION);
       HeapDumper.dumpHeap(heapDump, false);
       System.out.println("Heaped dumped to " + heapDump.getAbsolutePath());
     }

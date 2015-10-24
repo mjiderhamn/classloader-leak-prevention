@@ -15,6 +15,9 @@ public class HeapDumper {
 
   /** The name of the HotSpot Diagnostic MBean */
   private static final String HOTSPOT_BEAN_NAME = "com.sun.management:type=HotSpotDiagnostic";
+  
+  /** Filename extension for heap dumps */
+  public static final String HEAP_DUMP_EXTENSION = ".hprof";
 
   /** HotSpot diagnostic MBean */
   private static volatile HotSpotDiagnosticMXBean hotSpotDiagnosticMBean;
