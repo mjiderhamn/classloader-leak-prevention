@@ -151,6 +151,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
             }
 
           }
+          else // Leak was expected, but we had no prevention mechanism
+            performErrorActions(weak, testName);
 
         }
         else { // We did not expect a leak
