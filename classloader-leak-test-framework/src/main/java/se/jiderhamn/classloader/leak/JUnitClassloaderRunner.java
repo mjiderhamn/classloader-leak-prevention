@@ -228,6 +228,17 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     }
       final File dir = new File(new URL(classPath).toURI());
       final File sureFireReports = new File(dir.getParent(), "surefire-reports");
+      if(! sureFireReports.exists() && "test-classes".equals(dir.getName()) && "target".equals(dir.getParentFile().getName())) {
+        // Seems likely this is a Maven build, but surefire-reports have not been created yet (probably first test case)
+        try {
+          //noinspection ResultOfMethodCallIgnored
+          sureFireReports.mkdirs();
+        }
+        catch (Exception ignored) {
+          // Do nothing
+        }
+      }
+      
       return sureFireReports.exists() && sureFireReports.isDirectory() && sureFireReports.canWrite() ? sureFireReports :
           null;
     }
