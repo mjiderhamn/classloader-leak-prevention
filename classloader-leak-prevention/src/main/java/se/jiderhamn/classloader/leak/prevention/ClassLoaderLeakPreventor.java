@@ -1698,12 +1698,13 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     }
   }
   
-  /** Shutdown GeoTools cleaner thread as of http://jira.codehaus.org/browse/GEOT-2742 */
+  /** Shutdown GeoTools cleaner thread as of https://osgeo-org.atlassian.net/browse/GEOT-2742 */
   protected void fixGeoToolsLeak() {
     final Class<?> weakCollectionCleanerClass = findClass("org.geotools.util.WeakCollectionCleaner");
     if(weakCollectionCleanerClass != null) {
       try {
-        weakCollectionCleanerClass.getMethod("exit").invoke(null);
+        final Field DEFAULT = findField(weakCollectionCleanerClass, "DEFAULT");
+        weakCollectionCleanerClass.getMethod("exit").invoke(DEFAULT.get(null));
       }
       catch (Exception ex) {
         error(ex);
