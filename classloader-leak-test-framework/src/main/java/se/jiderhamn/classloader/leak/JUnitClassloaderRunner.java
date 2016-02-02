@@ -113,7 +113,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myClassLoader.markAsZombie();
         myClassLoader = null; // Make available to garbage collector
         
-        forceGc();
+        forceGc(3);
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
@@ -135,7 +135,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
               redefiningClassLoader = null;
               Thread.currentThread().setContextClassLoader(clBefore);
               
-              forceGc();
+              forceGc(3);
 
               performErrorActions(weak, testName);
 
@@ -176,11 +176,16 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     }
   }
 
+  /** Make sure Garbage Collection has been run N no of times */
+  private static void forceGc(int n) {
+    for(int i = 0; i < n; i++) {
+      forceGc();
+    }
+  }
+  
   /** Make sure Garbage Collection has been run */
   private static void forceGc() {
-    Object o = new Object();
-    WeakReference<Object> ref = new WeakReference<Object>(o);
-    o = null; // Make available for garbage collection
+    WeakReference<Object> ref = new WeakReference<Object>(new Object());
     while(ref.get() != null) { // Until garbage collection has actually been run
       System.gc();
     }
