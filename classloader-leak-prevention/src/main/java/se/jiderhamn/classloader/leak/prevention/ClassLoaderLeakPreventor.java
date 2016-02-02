@@ -561,7 +561,9 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       return constructor.newInstance(message, cause, true, false /* disable stack trace */);
     }
     catch (Throwable e) { // InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException
-      warn("Unable to construct RuntimeException without stack trace. Please report issue to developer of this library.");
+      warn("Unable to construct RuntimeException without stack trace. The likely reason is that you are using Java <= 1.6. " +
+          "No worries, except there is one kind of leak you're not protected from (https://github.com/mjiderhamn/classloader-leak-prevention/issues/36). " + 
+          "If you are already on Java 1.7+, please report issue to developer of this library!");
       warn(e);
       return null;
     }
