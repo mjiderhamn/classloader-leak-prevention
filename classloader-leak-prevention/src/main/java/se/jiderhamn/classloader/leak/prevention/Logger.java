@@ -5,6 +5,9 @@ package se.jiderhamn.classloader.leak.prevention;
  * into an existing architecture (such as an application server), you may want to use a custom implementation of this 
  * interface.
  * 
+ * If the {@link ClassLoaderLeakPreventorFactory} is beeing reused, the {@link Logger} implementation may need to be 
+ * thread safe.
+ * 
  * @author Mattias Jiderhamn
  */
 public interface Logger {

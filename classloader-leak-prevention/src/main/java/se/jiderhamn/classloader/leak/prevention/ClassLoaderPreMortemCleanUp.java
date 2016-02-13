@@ -7,7 +7,10 @@ package se.jiderhamn.classloader.leak.prevention;
  */
 public interface ClassLoaderPreMortemCleanUp {
   
-  /** Perform cleanup actions needed to make provided {@code classLoader} ready for garbage collection. s*/
-  void cleanUp(ClassLoader classLoader, Logger logger);
+  /** 
+   * Perform cleanup actions needed to make provided {@link ClassLoaderLeakPreventor#classLoader} 
+   * ready for garbage collection.
+   */
+  void cleanUp(ClassLoaderLeakPreventor classLoaderLeakPreventor);
   
 }

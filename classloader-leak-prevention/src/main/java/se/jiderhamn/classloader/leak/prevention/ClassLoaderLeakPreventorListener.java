@@ -142,10 +142,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   /** Class name for per thread transaction in Caucho Resin transaction manager */
   public static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
 
-  private static final ProtectionDomain[] NO_DOMAINS = new ProtectionDomain[0];
-
-  private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
-
   ///////////
   // Settings
   
@@ -281,10 +277,14 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     isOracleJRE = isOracleJRE();
     
     info("Initializing context by loading some known offenders with system classloader");
+
+    final ClassLoaderLeakPreventor classLoaderLeakPreventor =
+        new ClassLoaderLeakPreventorFactory()
+            .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
     
-     // Switch to system classloader in before we load/call some JRE stuff that will cause 
-     // the current classloader to be available for garbage collection
-    doInSystemClassLoader(new Runnable() {
+    // Switch to system classloader in before we load/call some JRE stuff that will cause 
+    // the current classloader to be available for garbage collection
+    classLoaderLeakPreventor.doInLeakSafeClassLoader(new Runnable() {
       @Override
       public void run() {
           // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
@@ -341,51 +341,10 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    * This however means the {@link AccessControlContext} will have a {@link DomainCombiner} referencing the web app 
    * classloader, which will be taken care of in {@link #stopThreads()}.
    */
-  void doInSystemClassLoader(final Runnable runnable) {
-    final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-    
-    try {
-      Thread.currentThread().setContextClassLoader(ClassLoader.getSystemClassLoader());
-
-      // Use doPrivileged() not to perform secured actions, but to avoid threads spawned inheriting the 
-      // AccessControlContext of the current thread, since among the ProtectionDomains there will be one
-      // (the top one) whose classloader is the web app classloader
-      AccessController.doPrivileged(new PrivilegedAction<Object>() {
-        @Override
-        public Object run() {
-          runnable.run();
-          return null; // Nothing to return
-        }
-      }, createAccessControlContext());
-    }
-    finally {
-      // Reset original classloader
-      Thread.currentThread().setContextClassLoader(contextClassLoader);
-    }
+  void doInSystemClassLoader(final Runnable runnable) { // TODO Remove
+    new ClassLoaderLeakPreventorFactory().newLeakPreventor(this.getClass().getClassLoader())
+        .doInLeakSafeClassLoader(runnable);
   }
-  
-  /** 
-   * Create {@link AccessControlContext} that is used in {@link #contextInitialized(javax.servlet.ServletContextEvent)}.
-   * The motive is to avoid spawned threads from inheriting all the {@link java.security.ProtectionDomain}s of the 
-   * running code, since that will include the web app classloader.
-   */
-  protected AccessControlContext createAccessControlContext() {
-    try { // Try the normal way
-      return new AccessControlContext(NO_DOMAINS_ACCESS_CONTROL_CONTEXT, domainCombiner);
-    }
-    catch (SecurityException e) { // createAccessControlContext not granted
-      try { // Try reflection
-        Constructor<AccessControlContext> constructor = 
-            AccessControlContext.class.getDeclaredConstructor(ProtectionDomain[].class, DomainCombiner.class);
-        constructor.setAccessible(true);
-        return constructor.newInstance(NO_DOMAINS, domainCombiner);
-      }
-      catch (Exception e1) {
-        error("createAccessControlContext not granted and AccessControlContext could not be created via reflection");
-        return AccessController.getContext();
-      }
-    }
-  } 
 
   /**
    * Override this method if you want to customize how we determine if we're running in
