@@ -26,7 +26,7 @@ public class SecurityProviderTest {
   
   public static class Preventor implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           super.deregisterSecurityProviders();
         }

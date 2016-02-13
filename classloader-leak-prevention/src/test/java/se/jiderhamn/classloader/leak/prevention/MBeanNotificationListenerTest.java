@@ -31,7 +31,7 @@ public class MBeanNotificationListenerTest {
   
   public static class Prevent implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           unregisterMXBeanNotificationListeners();
         }

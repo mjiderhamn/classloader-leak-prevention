@@ -22,7 +22,7 @@ public class CXFAuthenticatorTest {
   public static class Prevent implements Runnable {
     @Override
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         {
           clearDefaultAuthenticator();
         }

@@ -31,7 +31,7 @@ public class ThreadGroupTest {
   
   public static class Prevent implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor().destroyThreadGroups();
+      new ClassLoaderLeakPreventorListener().destroyThreadGroups();
     }
   }
   

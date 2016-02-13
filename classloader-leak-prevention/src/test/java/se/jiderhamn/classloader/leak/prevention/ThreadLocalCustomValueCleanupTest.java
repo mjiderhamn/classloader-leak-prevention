@@ -37,7 +37,7 @@ public class ThreadLocalCustomValueCleanupTest {
   
   public static class Preventor implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           forEachThreadLocalInCurrentThread(new ClearingThreadLocalProcessor());
         }

@@ -61,7 +61,7 @@ public class BeanELResolverTest {
   
   public static class Prevent implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           java.beans.Introspector.flushCaches(); // This must also be done          
 

@@ -22,7 +22,7 @@ public class DriverManagerTest {
   public static class Prevent implements Runnable {
     public void run() {
       try {
-        final ClassLoaderLeakPreventor classLoaderLeakPreventor = new ClassLoaderLeakPreventor();
+        final ClassLoaderLeakPreventorListener classLoaderLeakPreventor = new ClassLoaderLeakPreventorListener();
         classLoaderLeakPreventor.deregisterJdbcDrivers();
       }
       catch (Exception e) {

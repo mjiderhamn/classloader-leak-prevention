@@ -19,7 +19,7 @@ public class ImageIOTest {
   public void triggerImageIOLeak() throws Exception {
     // ImageIO.scanForPlugins() triggers two different leaks, but the preventor only removes one, so we need to avoid
     // the other one
-    new ClassLoaderLeakPreventor().doInSystemClassLoader(new Runnable() {
+    new ClassLoaderLeakPreventorListener().doInSystemClassLoader(new Runnable() {
       @Override
       public void run() {
         new JEditorPane("text/plain", "dummy");
@@ -31,7 +31,7 @@ public class ImageIOTest {
   
   public static class Prevent implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           deregisterIIOServiceProvider();
         }

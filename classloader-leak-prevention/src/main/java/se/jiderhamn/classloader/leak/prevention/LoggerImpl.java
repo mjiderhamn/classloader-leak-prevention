@@ -11,7 +11,7 @@ public class LoggerImpl implements Logger {
   
   /** Get prefix to use when logging to {@link System#out}/{@link System#err} */
   protected String getLogPrefix() {
-    return ClassLoaderLeakPreventor.class.getSimpleName() + ": ";
+    return "ClassLoader Leak Preventor: ";
   }
   
   @Override

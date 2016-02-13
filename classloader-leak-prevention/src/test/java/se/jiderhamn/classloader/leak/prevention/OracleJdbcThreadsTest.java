@@ -16,7 +16,7 @@ import se.jiderhamn.classloader.leak.Leaks;
 @Ignore // Comment out this to test Oracle JDBC problems
 public class OracleJdbcThreadsTest {
   
-  final static ClassLoaderLeakPreventor classLoaderLeakPreventor = new ClassLoaderLeakPreventor();
+  final static ClassLoaderLeakPreventorListener classLoaderLeakPreventor = new ClassLoaderLeakPreventorListener();
 
   @Test
   @Leaks(value = true, dumpHeapOnError = true)

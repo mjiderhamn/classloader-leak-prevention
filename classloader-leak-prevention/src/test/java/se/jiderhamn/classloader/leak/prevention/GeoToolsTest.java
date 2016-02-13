@@ -22,7 +22,7 @@ public class GeoToolsTest {
   public static class Preventor implements Runnable {
     @Override
     public void run() {
-      new ClassLoaderLeakPreventor() { { // "Constructor" 
+      new ClassLoaderLeakPreventorListener() { { // "Constructor" 
         fixGeoToolsLeak();
       }
       };

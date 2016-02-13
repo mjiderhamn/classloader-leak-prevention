@@ -19,7 +19,7 @@ public class BeanValidatorTest {
   
   public static class Preventor implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor().fixBeanValidationApiLeak();
+      new ClassLoaderLeakPreventorListener().fixBeanValidationApiLeak();
     }
   }
 }

@@ -44,7 +44,7 @@ public class TimerTest {
     }
   }
   
-  private static class TimerThreadLeakPreventor extends ClassLoaderLeakPreventor {
+  private static class TimerThreadLeakPreventor extends ClassLoaderLeakPreventorListener {
     public Collection<Thread> getAllThreads() {
       return super.getAllThreads();
     }

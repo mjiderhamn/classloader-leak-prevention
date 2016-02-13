@@ -129,7 +129,7 @@ import javax.swing.*;
  * 
  * @author Mattias Jiderhamn, 2012-2013
  */
-public class ClassLoaderLeakPreventor implements ServletContextListener {
+public class ClassLoaderLeakPreventorListener implements ServletContextListener {
   
   /** Default no of milliseconds to wait for threads to finish execution */
   public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
@@ -225,7 +225,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     this.stopThreads = stopThreads;
   }
 
-  public ClassLoaderLeakPreventor() {
+  public ClassLoaderLeakPreventorListener() {
     // Initialize some reflection variables
     java_lang_Thread_threadLocals = findField(Thread.class, "threadLocals");
     java_lang_Thread_inheritableThreadLocals = findField(Thread.class, "inheritableThreadLocals");
@@ -1778,7 +1778,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   protected ClassLoader getWebApplicationClassLoader() {
-    return ClassLoaderLeakPreventor.class.getClassLoader();
+    return ClassLoaderLeakPreventorListener.class.getClassLoader();
     // Alternative return Thread.currentThread().getContextClassLoader();
   }
   
@@ -2191,7 +2191,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
    */
   protected static void gc() {
     if (isDisableExplicitGCEnabled()) {
-      System.err.println(ClassLoaderLeakPreventor.class.getSimpleName() + ": "
+      System.err.println(ClassLoaderLeakPreventorListener.class.getSimpleName() + ": "
           + "Skipping GC call since -XX:+DisableExplicitGC is supplied as VM option.");
       return;
     }
@@ -2227,7 +2227,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
    */
   
   protected String getLogPrefix() {
-    return ClassLoaderLeakPreventor.class.getSimpleName() + ": ";
+    return ClassLoaderLeakPreventorListener.class.getSimpleName() + ": ";
   }
   
   /**

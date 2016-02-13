@@ -20,7 +20,7 @@ public class ApacheAxis14Test {
   
   public static class Prevent implements Runnable {
     public void run() {
-      new ClassLoaderLeakPreventor() {
+      new ClassLoaderLeakPreventorListener() {
         { // Initializer / "Constructor"
           clearThreadLocalsOfAllThreads();
         }
