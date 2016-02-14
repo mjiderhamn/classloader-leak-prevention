@@ -112,7 +112,6 @@ public class ClassLoaderLeakPreventor {
     * running code, since that will include the web app classloader.
     */
    protected AccessControlContext createAccessControlContext() {
-     final DomainCombiner domainCombiner = createDomainCombiner();
      try { // Try the normal way
        return new AccessControlContext(NO_DOMAINS_ACCESS_CONTROL_CONTEXT, domainCombiner);
      }
