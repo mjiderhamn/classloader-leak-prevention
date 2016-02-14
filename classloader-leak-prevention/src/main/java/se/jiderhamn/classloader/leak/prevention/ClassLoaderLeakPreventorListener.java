@@ -682,6 +682,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
         error(e);
       }
     }
+    
+    classLoaderLeakPreventor.runCleanUps();
 
     //////////////////
     // Fix known leaks

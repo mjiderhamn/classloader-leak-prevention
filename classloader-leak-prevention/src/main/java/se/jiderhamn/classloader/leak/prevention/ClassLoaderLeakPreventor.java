@@ -10,7 +10,7 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * TODO Document
+ * This class helps prevent classloader leaks.
  * @author Mattias Jiderhamn
  */
 public class ClassLoaderLeakPreventor {
