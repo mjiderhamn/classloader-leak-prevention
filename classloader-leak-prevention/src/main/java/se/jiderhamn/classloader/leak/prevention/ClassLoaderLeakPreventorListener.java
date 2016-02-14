@@ -190,33 +190,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   @Deprecated // TODO REMOVE
   private final Field java_security_AccessControlContext$combiner;
   
-  @Deprecated // TODO REMOVE
-  private final Field java_security_AccessControlContext$parent;
-  
-  @Deprecated // TODO REMOVE
-  private final Field java_security_AccessControlContext$privilegedContext;
-
-  /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
-  @Deprecated // TODO REMOVE
-  private final DomainCombiner domainCombiner = new DomainCombiner() {
-    @Override
-    public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
-      if(assignedDomains != null && assignedDomains.length > 0) {
-        error("Unexpected assignedDomains - please report to developer of this library!");
-      }
-      
-      // Keep all ProtectionDomain not involving the web app classloader 
-      final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
-      for(ProtectionDomain protectionDomain : currentDomains) {
-        if(protectionDomain.getClassLoader() == null || 
-           ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
-          output.add(protectionDomain);
-        }
-      }
-      return output.toArray(new ProtectionDomain[output.size()]);
-    }
-  };
-
   private ClassLoaderLeakPreventor classLoaderLeakPreventor;
 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
@@ -233,8 +206,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     java_lang_Thread_inheritableThreadLocals = findField(Thread.class, "inheritableThreadLocals");
     java_lang_ThreadLocal$ThreadLocalMap_table = findFieldOfClass("java.lang.ThreadLocal$ThreadLocalMap", "table");
     java_security_AccessControlContext$combiner = findField(AccessControlContext.class, "combiner");
-    java_security_AccessControlContext$parent = findField(AccessControlContext.class, "parent");
-    java_security_AccessControlContext$privilegedContext = findField(AccessControlContext.class, "privilegedContext");
     
     if(java_lang_Thread_threadLocals == null)
       error("java.lang.Thread.threadLocals not found; something is seriously wrong!");
@@ -256,35 +227,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     catch(Exception e){
       error(e);
     }
-  }
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Implement javax.servlet.ServletContextListener 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  @Override
-  public void contextInitialized(ServletContextEvent servletContextEvent) {
-    final ServletContext servletContext = servletContextEvent.getServletContext();
-    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
-    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
-    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
-    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
-    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
-    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
-    
-    info("Settings for " + this.getClass().getName() + " (CL: 0x" +
-         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
-    info("  stopThreads = " + stopThreads);
-    info("  stopTimerThreads = " + stopTimerThreads);
-    info("  executeShutdownHooks = " + executeShutdownHooks);
-    info("  threadWaitMs = " + threadWaitMs + " ms");
-    info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
-    
-    mayBeJBoss = isJBoss();
-    isOracleJRE = isOracleJRE();
-    
-    info("Initializing context by loading some known offenders with system classloader");
-
-    // TODO Move to constructor
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
 
     // Switch to system classloader in before we load/call some JRE stuff that will cause 
@@ -330,7 +273,34 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory
         .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Implement javax.servlet.ServletContextListener 
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  @Override
+  public void contextInitialized(ServletContextEvent servletContextEvent) {
+    final ServletContext servletContext = servletContextEvent.getServletContext();
+    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
+    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
+    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
+    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
+    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
+    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
+    info("Settings for " + this.getClass().getName() + " (CL: 0x" +
+         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
+    info("  stopThreads = " + stopThreads);
+    info("  stopTimerThreads = " + stopTimerThreads);
+    info("  executeShutdownHooks = " + executeShutdownHooks);
+    info("  threadWaitMs = " + threadWaitMs + " ms");
+    info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
+    
+    mayBeJBoss = isJBoss();
+    isOracleJRE = isOracleJRE();
+    
+    info("Initializing context by loading some known offenders with system classloader");
+
     classLoaderLeakPreventor.runPreClassLoaderInitiators();
 
     for(ServletContextListener listener : otherListeners) {
@@ -1410,34 +1380,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       else { // Thread not running in web app - may have been started in contextInitialized() and need fixed ACC
         if(inheritedAccessControlContext != null && java_security_AccessControlContext$combiner != null) {
           final AccessControlContext accessControlContext = getFieldValue(inheritedAccessControlContext, thread);
-          /* TODO classLoaderLeakPreventor.*/removeDomainCombiner(thread, accessControlContext);
+          classLoaderLeakPreventor.removeDomainCombiner(thread, accessControlContext);
         }
-      }
-    }
-  }
-
-  /** 
-   * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
-   * and any parents or privilegedContext thereof. 
-   */
-  private void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
-    if(accessControlContext != null) {
-      if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
-        warn(AccessControlContext.class.getSimpleName() + " of thread " + thread + " used custom combiner - unsetting");
-        try {
-          java_security_AccessControlContext$combiner.set(accessControlContext, null);
-        }
-        catch (Exception e) {
-          error(e);
-        }
-      }
-      
-      // Recurse
-      if(java_security_AccessControlContext$parent != null) {
-        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$parent, accessControlContext));
-      }
-      if(java_security_AccessControlContext$privilegedContext != null) {
-        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$privilegedContext, accessControlContext));
       }
     }
   }

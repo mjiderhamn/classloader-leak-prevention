@@ -19,26 +19,26 @@ public class ClassLoaderLeakPreventorFactory {
    * Defaults to {@link ClassLoader#getSystemClassLoader()}, but could be any other framework or 
    * app server classloader.
    */
-  private final ClassLoader leakSafeClassLoader;
+  protected final ClassLoader leakSafeClassLoader;
   
   /** 
    * The {@link Logger} that will be passed on to the different {@link PreClassLoaderInitiator}s and 
    * {@link ClassLoaderPreMortemCleanUp}s 
    */
-  private Logger logger = new LoggerImpl();
+  protected Logger logger = new LoggerImpl();
 
   /** 
    * Map from name to {@link PreClassLoaderInitiator}s with all the actions to invoke in the 
    * {@link #leakSafeClassLoader}. Maintains insertion order. Thread safe.
    */
-  private final Map<String, PreClassLoaderInitiator> preInitiators =
+  protected final Map<String, PreClassLoaderInitiator> preInitiators =
       synchronizedMap(new LinkedHashMap<String, PreClassLoaderInitiator>());
 
   /** 
    * Map from name to {@link ClassLoaderPreMortemCleanUp}s with all the actions to invoke to make a 
    * {@link ClassLoader} ready for Garbage Collection. Maintains insertion order. Thread safe.
    */
-  private final Map<String, ClassLoaderPreMortemCleanUp> cleanUps = 
+  protected final Map<String, ClassLoaderPreMortemCleanUp> cleanUps = 
       synchronizedMap(new LinkedHashMap<String, ClassLoaderPreMortemCleanUp>());
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

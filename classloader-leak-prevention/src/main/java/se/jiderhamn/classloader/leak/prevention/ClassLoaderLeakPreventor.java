@@ -2,6 +2,8 @@ package se.jiderhamn.classloader.leak.prevention;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.security.*;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -17,13 +19,11 @@ public class ClassLoaderLeakPreventor {
 
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
   
-  /* TODO
   private final Field java_security_AccessControlContext$combiner;
   
   private final Field java_security_AccessControlContext$parent;
   
   private final Field java_security_AccessControlContext$privilegedContext;
-  */
 
   /** 
    * {@link ClassLoader} to be used when invoking the {@link PreClassLoaderInitiator}s.
@@ -52,8 +52,14 @@ public class ClassLoaderLeakPreventor {
     this.logger = logger;
     this.preClassLoaderInitiators = preClassLoaderInitiators;
     this.cleanUps = cleanUps;
-    
-    domainCombiner = createDomainCombiner();
+
+    this.domainCombiner = createDomainCombiner();
+
+    // Reflection inits
+    java_security_AccessControlContext$combiner = findField(AccessControlContext.class, "combiner");
+    java_security_AccessControlContext$parent = findField(AccessControlContext.class, "parent");
+    java_security_AccessControlContext$privilegedContext = findField(AccessControlContext.class, "privilegedContext");
+
   }
   
   /** Invoke all the registered {@link PreClassLoaderInitiator}s in the {@link #leakSafeClassLoader} */
@@ -151,7 +157,6 @@ public class ClassLoaderLeakPreventor {
    * and any parents or privilegedContext thereof.
    * TODO: Consider extracting to {@link ClassLoaderPreMortemCleanUp}
    */
-  /* TODO
   public void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
     if(accessControlContext != null) {
       if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
@@ -173,7 +178,6 @@ public class ClassLoaderLeakPreventor {
       }
     }
   }
-  */
   
   
   /** Invoke all the registered {@link ClassLoaderPreMortemCleanUp}s */
@@ -218,4 +222,181 @@ public class ClassLoaderLeakPreventor {
        isClassLoaderOrChild(thread.getContextClassLoader()); // Running in classloader
   }
   
+  public <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {
+    Field staticField = findField(clazz, fieldName);
+    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
+  }
+
+  public <E> E getStaticFieldValue(String className, String fieldName) {
+    return (E) getStaticFieldValue(className, fieldName, false);
+  }
+  
+  public <E> E getStaticFieldValue(String className, String fieldName, boolean trySystemCL) {
+    Field staticField = findFieldOfClass(className, fieldName, trySystemCL);
+    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
+  }
+  
+  public Field findFieldOfClass(String className, String fieldName) {
+    return findFieldOfClass(className, fieldName, false);
+  }
+  
+  public Field findFieldOfClass(String className, String fieldName, boolean trySystemCL) {
+    Class<?> clazz = findClass(className, trySystemCL);
+    if(clazz != null) {
+      return findField(clazz, fieldName);
+    }
+    else
+      return null;
+  }
+  
+  public Class<?> findClass(String className) {
+    return findClass(className, false);
+  }
+  
+  public Class<?> findClass(String className, boolean trySystemCL) {
+    try {
+      return Class.forName(className);
+    }
+//    catch (NoClassDefFoundError e) {
+//      // Silently ignore
+//      return null;
+//    }
+    catch (ClassNotFoundException e) {
+      if (trySystemCL) {
+        try {
+          return Class.forName(className, true, ClassLoader.getSystemClassLoader());
+        } catch (ClassNotFoundException e1) {
+          // Silently ignore
+          return null;
+        }
+      }
+      // Silently ignore
+      return null;
+    }
+    catch (Exception ex) { // Example SecurityException
+      warn(ex);
+      return null;
+    }
+  }
+  
+  public Field findField(Class<?> clazz, String fieldName) {
+    if(clazz == null)
+      return null;
+
+    try {
+      final Field field = clazz.getDeclaredField(fieldName);
+      field.setAccessible(true); // (Field is probably private) 
+      return field;
+    }
+    catch (NoSuchFieldException ex) {
+      // Silently ignore
+      return null;
+    }
+    catch (Exception ex) { // Example SecurityException
+      warn(ex);
+      return null;
+    }
+  }
+  
+  public <T> T getStaticFieldValue(Field field) {
+    try {
+      if(! Modifier.isStatic(field.getModifiers())) {
+        warn(field.toString() + " is not static");
+        return null;
+      }
+      
+      return (T) field.get(null);
+    }
+    catch (Exception ex) {
+      warn(ex);
+      // Silently ignore
+      return null;
+    }
+  }
+  
+  public <T> T getFieldValue(Object obj, String fieldName) {
+    final Field field = findField(obj.getClass(), fieldName);
+    return (T) getFieldValue(field, obj);
+  }
+  
+  public <T> T getFieldValue(Field field, Object obj) {
+    try {
+      return (T) field.get(obj);
+    }
+    catch (Exception ex) {
+      warn(ex);
+      // Silently ignore
+      return null;
+    }
+  }
+  
+  public void setFinalStaticField(Field field, Object newValue) {
+    // Allow modification of final field 
+    try {
+      Field modifiersField = Field.class.getDeclaredField("modifiers");
+      modifiersField.setAccessible(true);
+      modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
+    }
+    catch (NoSuchFieldException e) {
+      warn("Unable to get 'modifiers' field of java.lang.Field");
+    }
+    catch (IllegalAccessException e) {
+      warn("Unable to set 'modifiers' field of java.lang.Field");
+    }
+    catch (Throwable t) {
+      warn(t);
+    }
+
+    // Update the field
+    try {
+      field.set(null, newValue);
+    }
+    catch (Throwable e) {
+      error("Error setting value of " + field + " to " + newValue);
+    }
+  }
+  
+  public Method findMethod(Class<?> clazz, String methodName, Class... parameterTypes) {
+    if(clazz == null)
+      return null;
+
+    try {
+      final Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
+      method.setAccessible(true);
+      return method;
+    }
+    catch (NoSuchMethodException ex) {
+      warn(ex);
+      // Silently ignore
+      return null;
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Delegate methods for Logger
+
+
+  public void debug(String msg) {
+    logger.debug(msg);
+  }
+
+  public void warn(Throwable t) {
+    logger.warn(t);
+  }
+
+  public void error(Throwable t) {
+    logger.error(t);
+  }
+
+  public void warn(String msg) {
+    logger.warn(msg);
+  }
+
+  public void error(String msg) {
+    logger.error(msg);
+  }
+
+  public void info(String msg) {
+    logger.info(msg);
+  }
 }
