@@ -187,13 +187,17 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
+  @Deprecated // TODO REMOVE
   private final Field java_security_AccessControlContext$combiner;
   
+  @Deprecated // TODO REMOVE
   private final Field java_security_AccessControlContext$parent;
   
+  @Deprecated // TODO REMOVE
   private final Field java_security_AccessControlContext$privilegedContext;
 
   /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
+  @Deprecated // TODO REMOVE
   private final DomainCombiner domainCombiner = new DomainCombiner() {
     @Override
     public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
@@ -212,6 +216,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       return output.toArray(new ProtectionDomain[output.size()]);
     }
   };
+
+  private ClassLoaderLeakPreventor classLoaderLeakPreventor;
 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
   protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
@@ -278,15 +284,14 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     
     info("Initializing context by loading some known offenders with system classloader");
 
-    final ClassLoaderLeakPreventor classLoaderLeakPreventor =
-        new ClassLoaderLeakPreventorFactory()
-            .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
-    
+    // TODO Move to constructor
+    final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
+
     // Switch to system classloader in before we load/call some JRE stuff that will cause 
     // the current classloader to be available for garbage collection
-    classLoaderLeakPreventor.doInLeakSafeClassLoader(new Runnable() {
+    classLoaderLeakPreventorFactory.addPreInitiator("legacy", new PreClassLoaderInitiator() {
       @Override
-      public void run() {
+      public void doOutsideClassLoader(Logger logger) {
           // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
           // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
 
@@ -323,6 +328,11 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       }
     });
 
+    classLoaderLeakPreventor = classLoaderLeakPreventorFactory
+        .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
+    
+    classLoaderLeakPreventor.runPreClassLoaderInitiators();
+
     for(ServletContextListener listener : otherListeners) {
       try {
         listener.contextInitialized(servletContextEvent);
@@ -342,8 +352,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    * classloader, which will be taken care of in {@link #stopThreads()}.
    */
   void doInSystemClassLoader(final Runnable runnable) { // TODO Remove
-    new ClassLoaderLeakPreventorFactory().newLeakPreventor(this.getClass().getClassLoader())
-        .doInLeakSafeClassLoader(runnable);
+    classLoaderLeakPreventor.doInLeakSafeClassLoader(runnable);
   }
 
   /**
@@ -1401,7 +1410,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       else { // Thread not running in web app - may have been started in contextInitialized() and need fixed ACC
         if(inheritedAccessControlContext != null && java_security_AccessControlContext$combiner != null) {
           final AccessControlContext accessControlContext = getFieldValue(inheritedAccessControlContext, thread);
-          removeDomainCombiner(thread, accessControlContext);
+          /* TODO classLoaderLeakPreventor.*/removeDomainCombiner(thread, accessControlContext);
         }
       }
     }

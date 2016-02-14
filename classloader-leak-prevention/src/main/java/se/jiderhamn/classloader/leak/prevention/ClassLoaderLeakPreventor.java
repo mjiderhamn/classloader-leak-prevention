@@ -1,8 +1,10 @@
 package se.jiderhamn.classloader.leak.prevention;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.security.*;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -15,6 +17,14 @@ public class ClassLoaderLeakPreventor {
 
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
   
+  /* TODO
+  private final Field java_security_AccessControlContext$combiner;
+  
+  private final Field java_security_AccessControlContext$parent;
+  
+  private final Field java_security_AccessControlContext$privilegedContext;
+  */
+
   /** 
    * {@link ClassLoader} to be used when invoking the {@link PreClassLoaderInitiator}s.
    * This will normally be the {@link ClassLoader#getSystemClassLoader()}, but could be any other framework or 
@@ -27,15 +37,35 @@ public class ClassLoaderLeakPreventor {
   
   private final Logger logger;
   
+  private final Collection<PreClassLoaderInitiator> preClassLoaderInitiators;
+  
+  private final Collection<ClassLoaderPreMortemCleanUp> cleanUps;
+  
   /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
   private final DomainCombiner domainCombiner;
 
-  ClassLoaderLeakPreventor(ClassLoader leakSafeClassLoader, ClassLoader classLoader, Logger logger) {
+  ClassLoaderLeakPreventor(ClassLoader leakSafeClassLoader, ClassLoader classLoader, Logger logger,
+                           Collection<PreClassLoaderInitiator> preClassLoaderInitiators,
+                           Collection<ClassLoaderPreMortemCleanUp> cleanUps) {
     this.leakSafeClassLoader = leakSafeClassLoader;
     this.classLoader = classLoader;
     this.logger = logger;
+    this.preClassLoaderInitiators = preClassLoaderInitiators;
+    this.cleanUps = cleanUps;
     
     domainCombiner = createDomainCombiner();
+  }
+  
+  /** Invoke all the registered {@link PreClassLoaderInitiator}s in the {@link #leakSafeClassLoader} */
+  public void runPreClassLoaderInitiators() {
+    doInLeakSafeClassLoader(new Runnable() {
+      @Override
+      public void run() {
+        for(PreClassLoaderInitiator preClassLoaderInitiator : preClassLoaderInitiators) {
+          preClassLoaderInitiator.doOutsideClassLoader(logger);
+        }
+      }
+    });
   }
   
   /**
@@ -47,7 +77,7 @@ public class ClassLoaderLeakPreventor {
    * avoid leaking. This however means the {@link AccessControlContext} will have a {@link DomainCombiner} referencing the 
    * classloader, which will be taken care of in {@link #stopThreads()} TODO!!!.
    */
-   public void doInLeakSafeClassLoader(final Runnable runnable) { // TODO Make non-private
+   public void doInLeakSafeClassLoader(final Runnable runnable) { // TODO Make non-public
      final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
      
      try {
@@ -115,6 +145,43 @@ public class ClassLoaderLeakPreventor {
        }
      };
    }  
+  
+  /** 
+   * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
+   * and any parents or privilegedContext thereof.
+   * TODO: Consider extracting to {@link ClassLoaderPreMortemCleanUp}
+   */
+  /* TODO
+  public void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
+    if(accessControlContext != null) {
+      if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
+        warn(AccessControlContext.class.getSimpleName() + " of thread " + thread + " used custom combiner - unsetting");
+        try {
+          java_security_AccessControlContext$combiner.set(accessControlContext, null);
+        }
+        catch (Exception e) {
+          error(e);
+        }
+      }
+      
+      // Recurse
+      if(java_security_AccessControlContext$parent != null) {
+        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$parent, accessControlContext));
+      }
+      if(java_security_AccessControlContext$privilegedContext != null) {
+        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$privilegedContext, accessControlContext));
+      }
+    }
+  }
+  */
+  
+  
+  /** Invoke all the registered {@link ClassLoaderPreMortemCleanUp}s */
+  public void runCleanUps() {
+    for(ClassLoaderPreMortemCleanUp cleanUp : cleanUps) {
+      cleanUp.cleanUp(this);
+    }
+  }
   
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Utility methods
