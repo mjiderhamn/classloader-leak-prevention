@@ -40,6 +40,9 @@ with a value of `false`.
 ```
 In this case, the test passes only in case a leak isn't triggered.
 
+If you want to execute some code outside the per-test classloader, you can do that in an 
+[`@Before`](http://junit.sourceforge.net/javadoc/org/junit/Before.html) annotated method.
+
 ## Heap dump
 In case you want a heap dump automatically generated when a leak is detected, you can use `@Leaks(dumpHeapOnError = true)` 
 and then watch stdout for the name of the heap dump file.
