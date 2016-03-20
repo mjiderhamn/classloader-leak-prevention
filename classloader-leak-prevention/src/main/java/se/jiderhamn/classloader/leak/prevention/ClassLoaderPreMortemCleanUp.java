@@ -11,6 +11,6 @@ public interface ClassLoaderPreMortemCleanUp {
    * Perform cleanup actions needed to make provided {@link ClassLoaderLeakPreventor#classLoader} 
    * ready for garbage collection.
    */
-  void cleanUp(ClassLoaderLeakPreventor classLoaderLeakPreventor);
+  void cleanUp(ClassLoaderLeakPreventor preventor);
   
 }

@@ -25,7 +25,10 @@ import java.lang.reflect.*;
 import java.net.Authenticator;
 import java.net.ProxySelector;
 import java.net.URL;
-import java.security.*;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.DomainCombiner;
+import java.security.PrivilegedAction;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -39,6 +42,11 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.swing.*;
+
+import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.BeanValidationCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.DefaultAuthenticatorCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.DriverManagerCleanUp;
 
 /**
  * This class helps prevent classloader leaks.
@@ -270,6 +278,16 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
           initOracleJdbcThread();
       }
     });
+    
+    // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
+    classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new BeanValidationCleanUp());
+    
+    ////////////////////
+    // Fix generic leaks
+    classLoaderLeakPreventorFactory.addCleanUp(new DriverManagerCleanUp());
+    
+    classLoaderLeakPreventorFactory.addCleanUp(new DefaultAuthenticatorCleanUp());
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory
         .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
@@ -393,6 +411,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    * deregister the driver at application shutdown.
    * 
    * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
+   * 
+   * TODO {@link DriverManagerCleanUp}
    */
   protected void initJdbcDrivers() {
     java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
@@ -691,12 +711,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     
     java.beans.Introspector.flushCaches(); // Clear cache of strong references
     
-    // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
-    
-    clearBeanELResolverCache();
-
-    fixBeanValidationApiLeak();
-    
     fixJsfLeak();
     
     fixGeoToolsLeak();
@@ -718,9 +732,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     ////////////////////
     // Fix generic leaks
     
-    // Deregister JDBC drivers contained in web application
-    deregisterJdbcDrivers();
-    
     // Unregister MBeans loaded by the web application class loader
     unregisterMBeans();
     
@@ -733,8 +744,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     deregisterPropertyEditors();
 
     deregisterSecurityProviders();
-    
-    clearDefaultAuthenticator();
     
     clearDefaultProxySelector();
     
@@ -835,27 +844,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
             + serviceProvider.getDescription(Locale.ROOT));
           registry.deregisterServiceProvider(serviceProvider);
         }
-      }
-    }
-  }
-
-/** Deregister JDBC drivers loaded by web app classloader */
-  public void deregisterJdbcDrivers() {
-    final List<Driver> driversToDeregister = new ArrayList<Driver>();
-    final Enumeration<Driver> allDrivers = DriverManager.getDrivers();
-    while(allDrivers.hasMoreElements()) {
-      final Driver driver = allDrivers.nextElement();
-      if(isLoadedInWebApplication(driver)) // Should be true for all returned by DriverManager.getDrivers()
-        driversToDeregister.add(driver);
-    }
-    
-    for(Driver driver : driversToDeregister) {
-      try {
-        warn("JDBC driver loaded by web app deregistered: " + driver.getClass());
-        DriverManager.deregisterDriver(driver);
-      }
-      catch (SQLException e) {
-        error(e);
       }
     }
   }
@@ -1105,115 +1093,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       for(String providerName : providersToRemove) {
         java.security.Security.removeProvider(providerName);
       }
-    }
-  }
-  
-  /**
-   * Clear the default java.net.Authenticator (in case current one is loaded in web app). 
-   * Includes special workaround for CXF issue https://issues.apache.org/jira/browse/CXF-5442
-   */
-  protected void clearDefaultAuthenticator() {
-    final Authenticator defaultAuthenticator = getDefaultAuthenticator();
-    if(defaultAuthenticator == null || // Can both mean not set, or error retrieving, so unset anyway to be safe 
-        isLoadedInWebApplication(defaultAuthenticator)) {
-      if(defaultAuthenticator != null) // Log warning only if a default was actually found
-        warn("Unsetting default " + Authenticator.class.getName() + ": " + defaultAuthenticator);
-      Authenticator.setDefault(null);
-    }
-    else {
-      if("org.apache.cxf.transport.http.ReferencingAuthenticator".equals(defaultAuthenticator.getClass().getName())) {
-        /*
-         Needed since org.apache.cxf.transport.http.ReferencingAuthenticator is loaded by dummy classloader that
-         references webapp classloader via AccessControlContext + ProtectionDomain.
-         See https://issues.apache.org/jira/browse/CXF-5442
-        */
-
-        final Class<?> cxfAuthenticator = findClass("org.apache.cxf.transport.http.CXFAuthenticator");
-        if(cxfAuthenticator != null && isLoadedByWebApplication(cxfAuthenticator)) { // CXF loaded in this application
-          final Object cxfAuthenticator$instance = getStaticFieldValue(cxfAuthenticator, "instance");
-          if(cxfAuthenticator$instance != null) { // CXF authenticator has been initialized in this webapp
-            final Object authReference = getFieldValue(defaultAuthenticator, "auth");
-            if(authReference instanceof Reference) { // WeakReference 
-              final Reference<?> reference = (Reference<?>) authReference;
-              final Object referencedAuth = reference.get();
-              if(referencedAuth == cxfAuthenticator$instance) { // References CXFAuthenticator of this classloader 
-                warn("Default " + Authenticator.class.getName() + " was " + defaultAuthenticator + " that referenced " +
-                    cxfAuthenticator$instance + " loaded by webapp");
-
-                // Let CXF unwrap in it's own way (in case there are multiple CXF webapps in the container)
-                reference.clear(); // Remove the weak reference before calling check()
-                try {
-                  final Method check = defaultAuthenticator.getClass().getMethod("check");
-                  check.setAccessible(true);
-                  check.invoke(defaultAuthenticator);
-                }
-                catch (Exception e) {
-                  error(e);
-                }
-              }
-            }
-          }
-        }
-      }
-      
-      removeWrappedAuthenticators(defaultAuthenticator);
-      
-      info("Default " + Authenticator.class.getName() + " not loaded in webapp: " + defaultAuthenticator);
-    }
-  }
-
-  /** Find default {@link Authenticator} */
-  protected Authenticator getDefaultAuthenticator() {
-    // Normally Corresponds to getStaticFieldValue(Authenticator.class, "theAuthenticator");
-    for(final Field f : Authenticator.class.getDeclaredFields()) {
-      if (f.getType().equals(Authenticator.class)) { // Supposedly "theAuthenticator"
-        try {
-          f.setAccessible(true);
-          return (Authenticator)f.get(null);
-        } catch (Exception e) {
-          error(e);
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Recursively removed wrapped {@link Authenticator} loaded in this webapp. May be needed in case there are multiple CXF
-   * applications within the same container.
-   */
-  protected void removeWrappedAuthenticators(final Authenticator authenticator) {
-    if(authenticator == null)
-      return;
-
-    try {
-      Class<?> authenticatorClass = authenticator.getClass();
-      do {
-        for(final Field f : authenticator.getClass().getDeclaredFields()) {
-          if(Authenticator.class.isAssignableFrom(f.getType())) {
-            try {
-              final boolean isStatic = Modifier.isStatic(f.getModifiers()); // In CXF case this should be false
-              final Authenticator owner = isStatic ? null : authenticator;
-              f.setAccessible(true);
-              final Authenticator wrapped = (Authenticator)f.get(owner);
-              if(isLoadedInWebApplication(wrapped)) {
-                warn(Authenticator.class.getName() + ": " + wrapped + ", wrapped by " + authenticator + 
-                    ", is loaded by webapp classloader");
-                f.set(owner, null); // For added safety
-              }
-              else {
-                removeWrappedAuthenticators(wrapped); // Recurse
-              }
-            } catch (Exception e) {
-              error(e);
-            }
-          }
-        }
-        authenticatorClass = authenticatorClass.getSuperclass();
-      } while (authenticatorClass != null && authenticatorClass != Object.class);
-    }
-    catch (Exception e) { // Should never happen
-      error(e);
     }
   }
   
@@ -1514,58 +1393,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  /** Clean the cache of BeanELResolver */
-  protected void clearBeanELResolverCache() {
-    final Class<?> beanElResolverClass = findClass("javax.el.BeanELResolver");
-    if(beanElResolverClass != null) {
-      boolean cleared = false;
-      try {
-        final Method purgeBeanClasses = beanElResolverClass.getDeclaredMethod("purgeBeanClasses", ClassLoader.class);
-        purgeBeanClasses.setAccessible(true);
-        purgeBeanClasses.invoke(beanElResolverClass.newInstance(), getWebApplicationClassLoader());
-        cleared = true;
-      }
-      catch (NoSuchMethodException e) {
-        // Version of javax.el probably > 2.2; no real need to clear
-      }
-      catch (Exception e) {
-        error(e);
-      }
-      
-      if(! cleared) {
-        // Fallback, if purgeBeanClasses() could not be called
-        final Field propertiesField = findField(beanElResolverClass, "properties");
-        if(propertiesField != null) {
-          try {
-            final Map<?, ?> properties = (Map<?, ?>) propertiesField.get(null);
-            properties.clear();
-          }
-          catch (Exception e) {
-            error(e);
-          }
-        }
-      }
-    }
-  }
-  
-  public void fixBeanValidationApiLeak() {
-    Class<?> offendingClass = findClass("javax.validation.Validation$DefaultValidationProviderResolver");
-    if(offendingClass != null) { // Class is present on class path
-      Field offendingField = findField(offendingClass, "providersPerClassloader");
-      if(offendingField != null) {
-        final Object providersPerClassloader = getStaticFieldValue(offendingField);
-        if(providersPerClassloader instanceof Map) { // Map<ClassLoader, List<ValidationProvider<?>>> in offending code
-          //noinspection SynchronizationOnLocalVariableOrMethodParameter
-          synchronized (providersPerClassloader) {
-            // Fix the leak!
-            ((Map<?, ?>)providersPerClassloader).remove(getWebApplicationClassLoader());
-          }
-        }
-      }
-    }
-    
-  }
-  
   /** 
    * Workaround for leak caused by Mojarra JSF implementation if included in the container.
    * See <a href="http://java.net/jira/browse/JAVASERVERFACES-2746">JAVASERVERFACES-2746</a>

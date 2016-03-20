@@ -1,34 +1,34 @@
-package se.jiderhamn.classloader.leak.prevention;
+package se.jiderhamn.classloader.leak.prevention.cleaup;
 
 import javax.el.*;
 
 import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
-import se.jiderhamn.classloader.leak.LeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUpTestBase;
+import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUp;
 
 /**
- * Test that the leak caused by BeanELResolver is cleared.
+ * Test case for {@link BeanELResolverCleanUp}
  * @author Mattias Jiderhamn
  */
-@RunWith(JUnitClassloaderRunner.class)
-@LeakPreventor(BeanELResolverTest.Prevent.class)
-public class BeanELResolverTest {
-  
+public class BeanELResolverCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<BeanELResolverCleanUp> {
+
   @Before
   public void setUp() {
     // Must be done outside test classloader 
     javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
   }
-  
-  @Test
-  public void triggerBeanELResolverLeak() throws Exception {
+
+  @Override
+  protected void triggerLeak() throws Exception {
     BeanELResolver beanELResolver = new BeanELResolver();
     beanELResolver.getValue(new MyELContext(), new Bean(), "foo"); // Will put class in strong reference cache
+    
   }
+
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   /** Bean for testing */
+  @SuppressWarnings("unused")
   public static class Bean {
     private String foo;
 
@@ -59,17 +59,4 @@ public class BeanELResolverTest {
     }
   }
   
-  public static class Prevent implements Runnable {
-    public void run() {
-      new ClassLoaderLeakPreventorListener() {
-        { // Initializer / "Constructor"
-          java.beans.Introspector.flushCaches(); // This must also be done          
-
-          clearBeanELResolverCache();
-        }
-      };
-    }
-
-  }
-
 }
