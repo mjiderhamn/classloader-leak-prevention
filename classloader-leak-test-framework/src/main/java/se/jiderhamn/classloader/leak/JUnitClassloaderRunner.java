@@ -77,7 +77,6 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     @SuppressWarnings("UnusedAssignment")
     @Override
     public void evaluate() throws Throwable {
-      final Class<?> junitClass = originalMethod.getDeclaringClass();
       final ClassLoader clBefore = Thread.currentThread().getContextClassLoader();
 
       final String testName = originalMethod.getDeclaringClass().getName() + '.' + originalMethod.getName();
@@ -85,21 +84,23 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       
       try {
         Thread.currentThread().setContextClassLoader(myClassLoader);
-        Class redefinedClass = myClassLoader.loadClass(junitClass.getName());
 
-        System.out.println("JUnit used " + junitClass.getClassLoader()); // TODO turn debugging on/off
-        System.out.println("SeparateClassLoaderInvokeMethod used " + redefinedClass.getClassLoader()); // TODO turn debugging on/off
+        // Load test class in our RedefiningClassLoader
+        TestClass myTestClass = new TestClass(myClassLoader.loadClass(getTestClass().getName()));
 
-        Method myMethod = redefinedClass.getDeclaredMethod(originalMethod.getName(), originalMethod.getParameterTypes());
-        TestClass myTestClass = new TestClass(redefinedClass);
-        
+        // Get test method in our RedefiningClassLoader (NOTE! can be in base class to test class)
+        Method myMethod = myClassLoader.loadClass(originalMethod.getDeclaringClass().getName())
+            .getDeclaredMethod(originalMethod.getName(), originalMethod.getParameterTypes());
+
+        System.out.println("JUnit used " + getTestClass().getJavaClass().getClassLoader()); // TODO turn debugging on/off
+        System.out.println("SeparateClassLoaderInvokeMethod used " + myTestClass.getJavaClass().getClassLoader()); // TODO turn debugging on/off
+
         // super.evaluate(); =
         new FrameworkMethod(myMethod).invokeExplosively(myTestClass.getOnlyConstructor().newInstance());
         
         // Make available to Garbage Collector
         myTestClass = null;
         myMethod = null;
-        redefinedClass = null;
       }
       catch (Exception e) {
         throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
