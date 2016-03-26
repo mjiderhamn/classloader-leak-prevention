@@ -15,38 +15,24 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
-import java.beans.PropertyEditorManager;
 import java.lang.management.ManagementFactory;
-import java.lang.management.PlatformManagedObject;
 import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.*;
-import java.net.Authenticator;
-import java.net.ProxySelector;
 import java.net.URL;
 import java.security.AccessControlContext;
-import java.security.AccessController;
 import java.security.DomainCombiner;
-import java.security.PrivilegedAction;
-import java.sql.Driver;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
-import javax.imageio.spi.IIORegistry;
-import javax.imageio.spi.IIOServiceProvider;
-import javax.imageio.spi.ServiceRegistry;
-import javax.management.*;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.swing.*;
 
-import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUp;
-import se.jiderhamn.classloader.leak.prevention.cleanup.BeanValidationCleanUp;
-import se.jiderhamn.classloader.leak.prevention.cleanup.DefaultAuthenticatorCleanUp;
-import se.jiderhamn.classloader.leak.prevention.cleanup.DriverManagerCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.*;
+
+import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookCleanUp.SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
 /**
  * This class helps prevent classloader leaks.
@@ -137,13 +123,11 @@ import se.jiderhamn.classloader.leak.prevention.cleanup.DriverManagerCleanUp;
  * 
  * @author Mattias Jiderhamn, 2012-2013
  */
+@SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventorListener implements ServletContextListener {
   
   /** Default no of milliseconds to wait for threads to finish execution */
   public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
-
-  /** Default no of milliseconds to wait for shutdown hook to finish execution */
-  public static final int SHUTDOWN_HOOK_WAIT_MS_DEFAULT = 10 * 1000; // 10 seconds
 
   public static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
   
@@ -180,9 +164,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    * If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
    */
   protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
-
-  /** Is it possible, that we are running under JBoss? */
-  private boolean mayBeJBoss = false;
 
   /** are we running in the Oracle/Sun Java Runtime Environment? */
   private boolean isOracleJRE;
@@ -278,16 +259,34 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
           initOracleJdbcThread();
       }
     });
-    
+
+    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 Move to factory
+    classLoaderLeakPreventorFactory.addCleanUp(new BeanIntrospectorCleanUp());
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new BeanValidationCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new JavaServerFaces2746CleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new GeoToolsCleanUp());
+    // Can we do anything about Google Guice ?
+    // Can we do anything about Groovy http://jira.codehaus.org/browse/GROOVY-4154 ?
+    classLoaderLeakPreventorFactory.addCleanUp(new IntrospectionUtilsCleanUp());
+    // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
+    classLoaderLeakPreventorFactory.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
     
     ////////////////////
     // Fix generic leaks
     classLoaderLeakPreventorFactory.addCleanUp(new DriverManagerCleanUp());
     
     classLoaderLeakPreventorFactory.addCleanUp(new DefaultAuthenticatorCleanUp());
+
+    classLoaderLeakPreventorFactory.addCleanUp(new MBeanCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new MXBeanNotificationListenersCleanUp());
+    
+    classLoaderLeakPreventorFactory.addCleanUp(new ShutdownHookCleanUp(executeShutdownHooks, shutdownHookWaitMs));
+    classLoaderLeakPreventorFactory.addCleanUp(new PropertyEditorCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new SecurityProviderCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new ProxySelectorCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new RmiTargetsCleanUp());
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory
         .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
@@ -314,8 +313,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     info("  threadWaitMs = " + threadWaitMs + " ms");
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
-    mayBeJBoss = isJBoss();
-    isOracleJRE = isOracleJRE();
+    isOracleJRE = classLoaderLeakPreventor.isOracleJRE();
     
     info("Initializing context by loading some known offenders with system classloader");
 
@@ -341,32 +339,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    */
   void doInSystemClassLoader(final Runnable runnable) { // TODO Remove
     classLoaderLeakPreventor.doInLeakSafeClassLoader(runnable);
-  }
-
-  /**
-   * Override this method if you want to customize how we determine if we're running in
-   * JBoss WildFly (a.k.a JBoss AS).
-   */
-  protected boolean isJBoss() {
-    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
-    
-    try {
-      // If package org.jboss is found, we may be running under JBoss
-      return (contextClassLoader.getResource("org/jboss") != null);
-    }
-    catch(Exception ex) {
-      return false;
-    }
-  }
-  
-  /**
-   * Override this method if you want to customize how we determine if this is a Oracle/Sun
-   * Java Runtime Environment.
-   */
-  protected boolean isOracleJRE() {
-    String javaVendor = System.getProperty("java.vendor");
-    
-    return javaVendor.startsWith("Oracle") || javaVendor.startsWith("Sun");
   }
 
   /**
@@ -622,7 +594,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       Class.forName("sun.java2d.Disposer"); // Will start a Thread
     }
     catch (ClassNotFoundException cnfex) {
-      if(isOracleJRE && ! mayBeJBoss) // JBoss blocks this package/class, so don't warn
+      if(isOracleJRE && ! classLoaderLeakPreventor.isJBoss()) // JBoss blocks this package/class, so don't warn
         error(cnfex);
     }
   }
@@ -709,45 +681,11 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     // Fix known leaks
     //////////////////
     
-    java.beans.Introspector.flushCaches(); // Clear cache of strong references
-    
-    fixJsfLeak();
-    
-    fixGeoToolsLeak();
-    
-    // Can we do anything about Google Guice ?
-    
-    // Can we do anything about Groovy http://jira.codehaus.org/browse/GROOVY-4154 ?
-
-    clearIntrospectionUtilsCache();
-
-    // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
-    
     // Force the execution of the cleanup code for JURT; see https://issues.apache.org/ooo/show_bug.cgi?id=122517
-    forceStartOpenOfficeJurtCleanup();
+    forceStartOpenOfficeJurtCleanup(); // (Do this before stopThreads())
     
-    // clear ImageIO registry
-    deregisterIIOServiceProvider();
-
     ////////////////////
     // Fix generic leaks
-    
-    // Unregister MBeans loaded by the web application class loader
-    unregisterMBeans();
-    
-    // Unregister MXBean NotificationListeners/NotificationFilters/handbacks loaded by the web application class loader
-    unregisterMXBeanNotificationListeners();
-    
-    // Deregister shutdown hooks - execute them immediately
-    deregisterShutdownHooks();
-    
-    deregisterPropertyEditors();
-
-    deregisterSecurityProviders();
-    
-    clearDefaultProxySelector();
-    
-    deregisterRmiTargets();
     
     stopThreads();
     
@@ -816,334 +754,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   // Fix generic leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  /** Unregister ImageIO Service Provider loaded by the web application class loader */
-  protected void deregisterIIOServiceProvider() {
-    IIORegistry registry = IIORegistry.getDefaultInstance();
-    Iterator<Class<?>> categories = registry.getCategories();
-    ServiceRegistry.Filter classLoaderFilter = new ServiceRegistry.Filter() {
-      @Override
-      public boolean filter(Object provider) {
-        //remove all service provider loaded by the current ClassLoader
-        return isLoadedInWebApplication(provider);
-      }
-    };
-    while (categories.hasNext()) {
-      @SuppressWarnings("unchecked")
-      Class<IIOServiceProvider> category = (Class<IIOServiceProvider>) categories.next();
-      Iterator<IIOServiceProvider> serviceProviders = registry.getServiceProviders(
-          category,
-          classLoaderFilter, true);
-      if (serviceProviders.hasNext()) {
-        //copy to list
-        List<IIOServiceProvider> serviceProviderList = new ArrayList<IIOServiceProvider>();
-        while (serviceProviders.hasNext()) {
-          serviceProviderList.add(serviceProviders.next());
-        }
-        for (IIOServiceProvider serviceProvider : serviceProviderList) {
-          warn("ImageIO " + category.getSimpleName() + " service provider deregistered: "
-            + serviceProvider.getDescription(Locale.ROOT));
-          registry.deregisterServiceProvider(serviceProvider);
-        }
-      }
-    }
-  }
-
-  /** Unregister MBeans loaded by the web application class loader */
-  protected void unregisterMBeans() {
-    try {
-      final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
-      final Set<ObjectName> allMBeanNames = mBeanServer.queryNames(new ObjectName("*:*"), null);
-
-      // Special treatment for Jetty, see https://bugs.eclipse.org/bugs/show_bug.cgi?id=423255
-      JettyJMXRemover jettyJMXRemover = null;
-      if(isJettyWithJMX()) {
-        try {
-          jettyJMXRemover = new JettyJMXRemover(getWebApplicationClassLoader());
-        }
-        catch (Exception ex) {
-          error(ex);
-        }
-      }
-      
-      // Look for custom MBeans
-      for(ObjectName objectName : allMBeanNames) {
-        try {
-          if (jettyJMXRemover != null && jettyJMXRemover.unregisterJettyJMXBean(objectName)) {
-        	  continue;
-          }
-          
-          final ClassLoader mBeanClassLoader = mBeanServer.getClassLoaderFor(objectName);
-          if(isWebAppClassLoaderOrChild(mBeanClassLoader)) { // MBean loaded in web application
-            warn("MBean '" + objectName + "' was loaded in web application; unregistering");
-            mBeanServer.unregisterMBean(objectName);
-          }
-          /* 
-          else if(... instanceof NotificationBroadcasterSupport) {
-            unregisterNotificationListeners((NotificationBroadcasterSupport) ...);
-          }
-          */
-        }
-        catch(Exception e) { // MBeanRegistrationException / InstanceNotFoundException
-          error(e);
-        }
-      }
-    }
-    catch (Exception e) { // MalformedObjectNameException
-      error(e);
-    }
-  }
-
-  /** 
-     * Unregister MBeans loaded by the web application class loader,
-     * and MBean {@link NotificationListener}s loaded by the web application class loader
-     */
-  protected void unregisterMXBeanNotificationListeners() {
-    final Class<?> platformComponentClass = findClass("java.lang.management.PlatformComponent");
-    final Method getMXBeans = findMethod(platformComponentClass, "getMXBeans", Class.class);
-    if(platformComponentClass != null && getMXBeans != null) { 
-      final Class<?> notificationEmitterSupportClass = findClass("sun.management.NotificationEmitterSupport");
-      final Field listenerListField = findField(notificationEmitterSupportClass, "listenerList");
-
-      final Class<?> listenerInfoClass = findClass("sun.management.NotificationEmitterSupport$ListenerInfo");
-      final Field listenerField = findField(listenerInfoClass, "listener");
-      final Field filterField = findField(listenerInfoClass, "filter");
-      final Field handbackField = findField(listenerInfoClass, "handback");
-
-      final boolean canProcessNotificationEmitterSupport =
-          listenerListField != null && listenerInfoClass != null && 
-          listenerField != null && filterField != null && handbackField != null;
-
-      if(! canProcessNotificationEmitterSupport)
-        warn("Unable to unregister NotificationEmitterSupport listeners, because details could not be found using reflection");
-
-      final Object[] platformComponents = platformComponentClass.getEnumConstants();
-      if(platformComponents != null) {
-        for(Object platformComponent : platformComponents) {
-          List<PlatformManagedObject> mxBeans = null;
-          try {
-            mxBeans = (List<PlatformManagedObject>) getMXBeans.invoke(platformComponent, (Class<?>) null);
-          }
-          catch (IllegalAccessException ex) {
-            error(ex);
-          }
-          catch (InvocationTargetException ex) {
-            error(ex);
-          }
-
-          if(mxBeans != null) { // We were able to retrieve MXBeans for this PlatformComponent
-            for(PlatformManagedObject mxBean : mxBeans) {
-              if(mxBean instanceof NotificationEmitter) { // The MXBean may have NotificationListeners
-                if(canProcessNotificationEmitterSupport && notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
-                  final List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList = getFieldValue(listenerListField, mxBean);
-                  if(listenerList != null) {
-                    for(Object listenerInfo : listenerList) { // Loop all listeners
-                      final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
-                      final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-                      final Object handback = getFieldValue(handbackField, listenerInfo);
-
-                      if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
-                        warn("Listener '" + listener + "' (or its filter or handback) of MXBean " + mxBean + 
-                            " of PlatformComponent " + platformComponent + " was loaded in web application; removing");
-                        // This is safe, as the implementation (as of this writing) works with a copy, not altering the original
-                        try {
-                          ((NotificationEmitter) mxBean).removeNotificationListener(listener, filter, handback);
-                        }
-                        catch (ListenerNotFoundException e) { // Should never happen
-                          error(e);
-                        }
-                      }
-                    }
-                  }
-                }
-                else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
-                  unregisterNotificationListeners((NotificationBroadcasterSupport) mxBean);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /** 
-   * Unregister {@link NotificationListener}s from subclass of {@link NotificationBroadcasterSupport}, if listener,
-   * filter or handback is loaded by the web app classloader.
-   */
-  protected void unregisterNotificationListeners(NotificationBroadcasterSupport mBean) {
-    final Field listenerListField = findField(NotificationBroadcasterSupport.class, "listenerList");
-    if(listenerListField != null) {
-      final Class<?> listenerInfoClass = findClass("javax.management.NotificationBroadcasterSupport$ListenerInfo");
-
-      final List<? /*javax.management.NotificationBroadcasterSupport.ListenerInfo*/> listenerList =
-          getFieldValue(listenerListField, mBean);
-
-      if(listenerList != null) {
-        final Field listenerField = findField(listenerInfoClass, "listener");
-        final Field filterField = findField(listenerInfoClass, "filter");
-        final Field handbackField = findField(listenerInfoClass, "handback");
-        for(Object listenerInfo : listenerList) {
-          final NotificationListener listener = getFieldValue(listenerField, listenerInfo);
-          final NotificationFilter filter = getFieldValue(filterField, listenerInfo);
-          final Object handback = getFieldValue(handbackField, listenerInfo);
-
-          if(isLoadedInWebApplication(listener) || isLoadedInWebApplication(filter) || isLoadedInWebApplication(handback)) {
-            warn("Listener '" + listener + "' (or its filter or handback) of MBean " + mBean + 
-                " was loaded in web application; removing");
-            // This is safe, as the implementation works with a copy, not altering the original
-            try {
-              mBean.removeNotificationListener(listener, filter, handback);
-            }
-            catch (ListenerNotFoundException e) { // Should never happen
-              error(e);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  /** Find and deregister shutdown hooks. Will by default execute the hooks after removing them. */
-  protected void deregisterShutdownHooks() {
-    // We will not remove known shutdown hooks, since loading the owning class of the hook,
-    // may register the hook if previously unregistered 
-    Map<Thread, Thread> shutdownHooks = getStaticFieldValue("java.lang.ApplicationShutdownHooks", "hooks");
-    if(shutdownHooks != null) { // Could be null during JVM shutdown, which we already avoid, but be extra precautious
-      // Iterate copy to avoid ConcurrentModificationException
-      for(Thread shutdownHook : new ArrayList<Thread>(shutdownHooks.keySet())) {
-        if(isThreadInWebApplication(shutdownHook)) { // Planned to run in web app          
-          removeShutdownHook(shutdownHook);
-        }
-      }
-    }
-  }
-
-  /** Deregister shutdown hook and execute it immediately */
-  @SuppressWarnings("deprecation")
-  protected void removeShutdownHook(Thread shutdownHook) {
-    final String displayString = "'" + shutdownHook + "' of type " + shutdownHook.getClass().getName();
-    error("Removing shutdown hook: " + displayString);
-    Runtime.getRuntime().removeShutdownHook(shutdownHook);
-
-    if(executeShutdownHooks) { // Shutdown hooks should be executed
-      
-      info("Executing shutdown hook now: " + displayString);
-      // Make sure it's from this web app instance
-      shutdownHook.start(); // Run cleanup immediately
-      
-      if(shutdownHookWaitMs > 0) { // Wait for shutdown hook to finish
-        try {
-          shutdownHook.join(shutdownHookWaitMs); // Wait for thread to run
-        }
-        catch (InterruptedException e) {
-          // Do nothing
-        }
-        if(shutdownHook.isAlive()) {
-          warn(shutdownHook + "still running after " + shutdownHookWaitMs + " ms - Stopping!");
-          shutdownHook.stop();
-        }
-      }
-    }
-  }
-
-  /** Deregister custom property editors */
-  protected void deregisterPropertyEditors() {
-    final Field registryField = findField(PropertyEditorManager.class, "registry");
-    if(registryField == null) {
-      error("Internal registry of " + PropertyEditorManager.class.getName() + " not found");
-    }
-    else {
-      try {
-        synchronized (PropertyEditorManager.class) {
-          final Map<Class<?>, Class<?>> registry = (Map<Class<?>, Class<?>>) registryField.get(null);
-          if(registry != null) { // Initialized
-            final Set<Class<?>> toRemove = new HashSet<Class<?>>();
-            
-            for(Map.Entry<Class<?>, Class<?>> entry : registry.entrySet()) {
-              if(isLoadedByWebApplication(entry.getKey()) ||
-                 isLoadedByWebApplication(entry.getValue())) { // More likely
-                toRemove.add(entry.getKey());
-              }
-            }
-            
-            for(Class<?> clazz : toRemove) {
-              warn("Property editor for type " + clazz +  " = " + registry.get(clazz) + " needs to be deregistered");
-              PropertyEditorManager.registerEditor(clazz, null); // Deregister
-            }
-          }
-        }
-      }
-      catch (Exception e) { // Such as IllegalAccessException
-        error(e);
-      }
-    }
-  }
-  
-  /** Deregister custom security providers */
-  protected void deregisterSecurityProviders() {
-    final Set<String> providersToRemove = new HashSet<String>();
-    for(java.security.Provider provider : java.security.Security.getProviders()) {
-      if(isLoadedInWebApplication(provider)) {
-        providersToRemove.add(provider.getName());
-      }
-    }
-    
-    if(! providersToRemove.isEmpty()) {
-      warn("Removing security providers loaded in web app: " + providersToRemove);
-      for(String providerName : providersToRemove) {
-        java.security.Security.removeProvider(providerName);
-      }
-    }
-  }
-  
-  /** If default {@link java.net.ProxySelector} is loaded by web application it needs to be unset */
-  protected void clearDefaultProxySelector() {
-    AccessController.doPrivileged(new PrivilegedAction<Void>() {
-      @Override
-      public Void run() {
-        ProxySelector selector = ProxySelector.getDefault();
-        if(isLoadedInWebApplication(selector)) {
-          ProxySelector.setDefault(null);
-          warn("Removing default java.net.ProxySelector: " + selector);
-        }
-        return null;
-      }
-    });
-  }
-
-  /** This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesRmiTargets() */
-  protected void deregisterRmiTargets() {
-    try {
-      final Class<?> objectTableClass = findClass("sun.rmi.transport.ObjectTable");
-      if(objectTableClass != null) {
-        clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "objTable"));
-        clearRmiTargetsMap((Map<?, ?>) getStaticFieldValue(objectTableClass, "implTable"));
-      }
-    }
-    catch (Exception ex) {
-      error(ex);
-    }
-  }
-  
-  /** Iterate RMI Targets Map and remove entries loaded by web app classloader */
-  protected void clearRmiTargetsMap(Map<?, ?> rmiTargetsMap) {
-    try {
-      final Field cclField = findFieldOfClass("sun.rmi.transport.Target", "ccl");
-      debug("Looping " + rmiTargetsMap.size() + " RMI Targets to find leaks");
-      for(Iterator<?> iter = rmiTargetsMap.values().iterator(); iter.hasNext(); ) {
-        Object target = iter.next(); // sun.rmi.transport.Target
-        ClassLoader ccl = (ClassLoader) cclField.get(target);
-        if(isWebAppClassLoaderOrChild(ccl)) {
-          warn("Removing RMI Target: " + target);
-          iter.remove();
-        }
-      }
-    }
-    catch (Exception ex) {
-      error(ex);
-    }
-  }
-
   protected void clearThreadLocalsOfAllThreads() {
     final ThreadLocalProcessor clearingThreadLocalProcessor = getThreadLocalProcessor();
     for(Thread thread : getAllThreads()) {
@@ -1393,96 +1003,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  /** 
-   * Workaround for leak caused by Mojarra JSF implementation if included in the container.
-   * See <a href="http://java.net/jira/browse/JAVASERVERFACES-2746">JAVASERVERFACES-2746</a>
-   */
-  protected void fixJsfLeak() {
-    /*
-     Note that since a WeakHashMap is used, it is not the map key that is the problem. However the value is a
-     Map with java.beans.PropertyDescriptor as value, and java.beans.PropertyDescriptor has a Hashtable in which
-     a class is put with "type" as key. This class may have been loaded by the web application.
-
-     One example case is the class org.primefaces.component.menubutton.MenuButton that points to a Map with a key 
-     "model" whose PropertyDescriptor.table has key "type" with the class org.primefaces.model.MenuModel as its value.
-
-     For performance reasons however, we'll only look at the top level key and remove any that has been loaded by the
-     web application.     
-     */
-    
-    Object o = getStaticFieldValue("javax.faces.component.UIComponentBase", "descriptors"); // Non-static as of JSF 2.2.5
-    if(o instanceof WeakHashMap) {
-      WeakHashMap<?, ?> descriptors = (WeakHashMap<?, ?>) o;
-      final Set<Class<?>> toRemove = new HashSet<Class<?>>();
-      for(Object key : descriptors.keySet()) {
-        if(key instanceof Class && isLoadedByWebApplication((Class<?>)key)) {
-          // For performance reasons, remove all classes loaded in web application
-          toRemove.add((Class<?>) key);
-          
-          // This would be more correct, but presumably slower
-          /*
-          Map<String, PropertyDescriptor> m = (Map<String, PropertyDescriptor>) descriptors.get(key);
-          for(Map.Entry<String,PropertyDescriptor> entry : m.entrySet()) {
-            Object type = entry.getValue().getValue("type"); // Key constant javax.el.ELResolver.TYPE
-            if(type instanceof Class && isLoadedByWebApplication((Class)type)) {
-              toRemove.add((Class) key); 
-            }
-          }
-          */
-        }
-      }
-      
-      if(! toRemove.isEmpty()) {
-        info("Removing " + toRemove.size() + " classes from Mojarra descriptors cache");
-        for(Class<?> clazz : toRemove) {
-          descriptors.remove(clazz);
-        }
-      }
-    }
-  }
-  
-  /** Shutdown GeoTools cleaner thread as of https://osgeo-org.atlassian.net/browse/GEOT-2742 */
-  protected void fixGeoToolsLeak() {
-    final Class<?> weakCollectionCleanerClass = findClass("org.geotools.util.WeakCollectionCleaner");
-    if(weakCollectionCleanerClass != null) {
-      try {
-        final Field DEFAULT = findField(weakCollectionCleanerClass, "DEFAULT");
-        weakCollectionCleanerClass.getMethod("exit").invoke(DEFAULT.get(null));
-      }
-      catch (Exception ex) {
-        error(ex);
-      }
-    }
-  }
-
-  /** Clear IntrospectionUtils caches of Tomcat and Apache Commons Modeler */
-  protected void clearIntrospectionUtilsCache() {
-    // Tomcat
-    final Class<?> tomcatIntrospectionUtils = findClass("org.apache.tomcat.util.IntrospectionUtils");
-    if(tomcatIntrospectionUtils != null) {
-      try {
-        tomcatIntrospectionUtils.getMethod("clear").invoke(null);
-      }
-      catch (Exception ex) {
-        if(! mayBeJBoss) // JBoss includes this class, but no cache and no clear() method
-          error(ex);
-      }
-    }
-
-    // Apache Commons Modeler
-    final Class<?> modelIntrospectionUtils = findClass("org.apache.commons.modeler.util.IntrospectionUtils");
-    if(modelIntrospectionUtils != null && ! isWebAppClassLoaderOrChild(modelIntrospectionUtils.getClassLoader())) { // Loaded outside web app
-      try {
-        modelIntrospectionUtils.getMethod("clear").invoke(null);
-      }
-      catch (Exception ex) {
-        warn("org.apache.commons.modeler.util.IntrospectionUtils needs to be cleared but there was an error, " +
-            "consider upgrading Apache Commons Modeler");
-        error(ex);
-      }
-    }
-  }
-  
   /** 
    * The bug detailed at https://issues.apache.org/ooo/show_bug.cgi?id=122517 is quite tricky. This is a try to 
    * avoid the issues by force starting the threads and it's job queue.
@@ -2073,160 +1593,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       info(getName() + " about to kill " + jurtThread);
       if(jurtThread.isAlive())
         jurtThread.stop();
-    }
-  }
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Methods and classes for Jetty, see https://bugs.eclipse.org/bugs/show_bug.cgi?id=423255 
-  
-  /** Are we running in Jetty with JMX enabled? */
-  protected boolean isJettyWithJMX() {
-    final ClassLoader classLoader = getWebApplicationClassLoader();
-    try {
-      // If package org.eclipse.jetty is found, we may be running under jetty
-      if (classLoader.getResource("org/eclipse/jetty") == null) {
-        return false;
-      }
-
-      Class.forName("org.eclipse.jetty.jmx.MBeanContainer", false, classLoader.getParent()); // JMX enabled?
-      Class.forName("org.eclipse.jetty.webapp.WebAppContext", false, classLoader.getParent());
-    }
-    catch(Exception ex) { // For example ClassNotFoundException
-      return false;
-    }
-    
-    // Seems we are running in Jetty with JMX enabled
-    return true;
-  }
-  
-  /** 
-   * Inner utility class that helps dealing with Jetty MBeans class.
-   * If you enable JMX support in Jetty 8 or 9 some MBeans (e.g. for the ServletHolder or SessionManager) are
-   * instantiated in the web application thread and a reference to the WebappClassloader is stored in a private
-   * ObjectMBean._loader which is unfortunately not the classloader that loaded the class. Therefore we need to access 
-   * the MBeanContainer class of the Jetty container and unregister the MBeans.
-   */
-  private class JettyJMXRemover {
-
-    /** List of objects that may be wrapped in MBean by Jetty. Should be allowed to contain null. */
-    private List<Object> objectsWrappedWithMBean;
-
-    /** The org.eclipse.jetty.jmx.MBeanContainer instance */
-    private Object beanContainer;
-
-    /** org.eclipse.jetty.jmx.MBeanContainer.findBean() */
-    private Method findBeanMethod;
-
-    /** org.eclipse.jetty.jmx.MBeanContainer.removeBean() */
-    private Method removeBeanMethod;
-
-    public JettyJMXRemover(ClassLoader classLoader) throws Exception {
-      // First we need access to the MBeanContainer to access the beans
-      // WebAppContext webappContext = (WebAppContext)servletContext;
-      final Object webappContext = findJettyClass("org.eclipse.jetty.webapp.WebAppClassLoader")
-              .getMethod("getContext").invoke(classLoader);
-      if(webappContext == null)
-        return;
-      
-      // Server server = (Server)webappContext.getServer();
-      final Class<?> webAppContextClass = findJettyClass("org.eclipse.jetty.webapp.WebAppContext");
-      final Object server = webAppContextClass.getMethod("getServer").invoke(webappContext);
-      if(server == null)
-        return;
-
-      // MBeanContainer beanContainer = (MBeanContainer)server.getBean(MBeanContainer.class);
-	  
-      final Class<?> mBeanContainerClass = findJettyClass("org.eclipse.jetty.jmx.MBeanContainer");
-      beanContainer = findJettyClass("org.eclipse.jetty.server.Server")
-              .getMethod("getBean", Class.class).invoke(server, mBeanContainerClass);
-      // Now we store all objects that belong to the web application and that will be wrapped by MBeans in a list
-      if (beanContainer != null) {
-        findBeanMethod = mBeanContainerClass.getMethod("findBean", ObjectName.class);
-        try {
-          removeBeanMethod = mBeanContainerClass.getMethod("removeBean", Object.class);
-        } catch (NoSuchMethodException e) {
-          warn("MBeanContainer.removeBean() method can not be found. giving up");
-          return;
-        }
-
-        objectsWrappedWithMBean = new ArrayList<Object>();
-        // SessionHandler sessionHandler = webappContext.getSessionHandler();
-        final Object sessionHandler = webAppContextClass.getMethod("getSessionHandler").invoke(webappContext);
-        if(sessionHandler != null) {
-          objectsWrappedWithMBean.add(sessionHandler);
-  
-          // SessionManager sessionManager = sessionHandler.getSessionManager();
-          final Object sessionManager = findJettyClass("org.eclipse.jetty.server.session.SessionHandler")
-                  .getMethod("getSessionManager").invoke(sessionHandler);
-          if(sessionManager != null) {
-            objectsWrappedWithMBean.add(sessionManager);
-
-            // SessionIdManager sessionIdManager = sessionManager.getSessionIdManager();
-            final Object sessionIdManager = findJettyClass("org.eclipse.jetty.server.SessionManager")
-                    .getMethod("getSessionIdManager").invoke(sessionManager);
-            objectsWrappedWithMBean.add(sessionIdManager);
-          }
-        }
-
-        // SecurityHandler securityHandler = webappContext.getSecurityHandler();
-        objectsWrappedWithMBean.add(webAppContextClass.getMethod("getSecurityHandler").invoke(webappContext));
-
-        // ServletHandler servletHandler = webappContext.getServletHandler();
-        final Object servletHandler = webAppContextClass.getMethod("getServletHandler").invoke(webappContext);
-        if(servletHandler != null) {
-          objectsWrappedWithMBean.add(servletHandler);
-
-          final Class<?> servletHandlerClass = findJettyClass("org.eclipse.jetty.servlet.ServletHandler");
-          // Object[] servletMappings = servletHandler.getServletMappings();
-          objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServletMappings").invoke(servletHandler)));
-
-          // Object[] servlets = servletHandler.getServlets();
-          objectsWrappedWithMBean.add(Arrays.asList((Object[]) servletHandlerClass.getMethod("getServlets").invoke(servletHandler)));
-        }
-      }
-    }
-
-    /**
-     * Test if objectName denotes a wrapping Jetty MBean and if so unregister it.
-     * @return {@code true} if Jetty MBean was unregistered, otherwise {@code false}
-     */
-    boolean unregisterJettyJMXBean(ObjectName objectName) {
-      if (objectsWrappedWithMBean == null || ! objectName.getDomain().contains("org.eclipse.jetty")) {
-        return false;
-      }
-      else { // Possibly a Jetty MBean that needs to be unregistered
-        try {
-		      final Object bean = findBeanMethod.invoke(beanContainer, objectName);
-          if(bean == null)
-            return false;
-          
-		      // Search suspect list
-		      for (Object wrapped : objectsWrappedWithMBean) {
-		        if (wrapped == bean) {
-			        warn("Jetty MBean '" + objectName + "' is a suspect in causing memory leaks; unregistering");
-			        removeBeanMethod.invoke(beanContainer, bean); // Remove it via the MBeanContainer
-			        return true;
-            }
-		      }
-  		  }
-        catch (Exception ex)  {
-			    error(ex);
-		    }
-		    return false;
-	    }
-    }
-
-    Class findJettyClass(String className) throws ClassNotFoundException {
-      try {
-        return Class.forName(className, false, getWebApplicationClassLoader().getParent());
-      } catch (ClassNotFoundException e1) {
-        try {
-          return Class.forName(className);
-        } catch (ClassNotFoundException e2) {
-          e2.addSuppressed(e1);
-          throw e2;
-        }
-      }
     }
   }
 }

@@ -44,7 +44,7 @@ public class ClassLoaderLeakPreventor {
   /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
   private final DomainCombiner domainCombiner;
 
-  ClassLoaderLeakPreventor(ClassLoader leakSafeClassLoader, ClassLoader classLoader, Logger logger,
+  public ClassLoaderLeakPreventor(ClassLoader leakSafeClassLoader, ClassLoader classLoader, Logger logger,
                            Collection<PreClassLoaderInitiator> preClassLoaderInitiators,
                            Collection<ClassLoaderPreMortemCleanUp> cleanUps) {
     this.leakSafeClassLoader = leakSafeClassLoader;
@@ -369,6 +369,32 @@ public class ClassLoaderLeakPreventor {
       // Silently ignore
       return null;
     }
+  }
+
+  /**
+   * Override this method if you want to customize how we determine if we're running in
+   * JBoss WildFly (a.k.a JBoss AS).
+   */
+  public boolean isJBoss() {
+    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+    
+    try {
+      // If package org.jboss is found, we may be running under JBoss
+      return (contextClassLoader.getResource("org/jboss") != null);
+    }
+    catch(Exception ex) {
+      return false;
+    }
+  }
+  
+  /**
+   * Override this method if you want to customize how we determine if this is a Oracle/Sun
+   * Java Runtime Environment.
+   */
+  protected boolean isOracleJRE() {
+    String javaVendor = System.getProperty("java.vendor");
+    
+    return javaVendor.startsWith("Oracle") || javaVendor.startsWith("Sun");
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

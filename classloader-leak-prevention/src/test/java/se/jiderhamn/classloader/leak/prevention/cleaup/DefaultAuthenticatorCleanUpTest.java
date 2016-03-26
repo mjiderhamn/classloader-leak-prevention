@@ -1,7 +1,6 @@
 package se.jiderhamn.classloader.leak.prevention.cleaup;
 
 import org.apache.cxf.transport.http.CXFAuthenticator;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUpTestBase;
 import se.jiderhamn.classloader.leak.prevention.cleanup.DefaultAuthenticatorCleanUp;
 
 /**

@@ -1,6 +1,5 @@
 package se.jiderhamn.classloader.leak.prevention.cleaup;
 
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUpTestBase;
 import se.jiderhamn.classloader.leak.prevention.cleanup.DriverManagerCleanUp;
 
 /**

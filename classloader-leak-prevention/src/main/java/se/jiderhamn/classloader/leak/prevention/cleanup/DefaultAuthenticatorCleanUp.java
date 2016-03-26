@@ -10,7 +10,7 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
 /**
- * Clear the default {@link java.net.Authenticator} (in case current one is loaded in web app). 
+ * Clear the default {@link java.net.Authenticator} (in case current one is loaded by protected ClassLoader). 
  * Includes special workaround for CXF issue https://issues.apache.org/jira/browse/CXF-5442
  * @author Mattias Jiderhamn
  */
@@ -28,21 +28,21 @@ public class DefaultAuthenticatorCleanUp implements ClassLoaderPreMortemCleanUp 
       if("org.apache.cxf.transport.http.ReferencingAuthenticator".equals(defaultAuthenticator.getClass().getName())) {
         /*
          Needed since org.apache.cxf.transport.http.ReferencingAuthenticator is loaded by dummy classloader that
-         references webapp classloader via AccessControlContext + ProtectionDomain.
+         references protected classloader via AccessControlContext + ProtectionDomain.
          See https://issues.apache.org/jira/browse/CXF-5442
         */
 
         final Class<?> cxfAuthenticator = preventor.findClass("org.apache.cxf.transport.http.CXFAuthenticator");
         if(cxfAuthenticator != null && preventor.isLoadedByClassLoader(cxfAuthenticator)) { // CXF loaded in this application
           final Object cxfAuthenticator$instance = preventor.getStaticFieldValue(cxfAuthenticator, "instance");
-          if(cxfAuthenticator$instance != null) { // CXF authenticator has been initialized in this webapp
+          if(cxfAuthenticator$instance != null) { // CXF authenticator has been initialized in protected ClassLoader
             final Object authReference = preventor.getFieldValue(defaultAuthenticator, "auth");
             if(authReference instanceof Reference) { // WeakReference 
               final Reference<?> reference = (Reference<?>) authReference;
               final Object referencedAuth = reference.get();
               if(referencedAuth == cxfAuthenticator$instance) { // References CXFAuthenticator of this classloader 
                 preventor.warn("Default " + Authenticator.class.getName() + " was " + defaultAuthenticator + " that referenced " +
-                    cxfAuthenticator$instance + " loaded by webapp");
+                    cxfAuthenticator$instance + " loaded by protected ClassLoader");
 
                 // Let CXF unwrap in it's own way (in case there are multiple CXF webapps in the container)
                 reference.clear(); // Remove the weak reference before calling check()
@@ -62,7 +62,7 @@ public class DefaultAuthenticatorCleanUp implements ClassLoaderPreMortemCleanUp 
       
       removeWrappedAuthenticators(preventor, defaultAuthenticator);
       
-      preventor.info("Default " + Authenticator.class.getName() + " not loaded in webapp: " + defaultAuthenticator);
+      preventor.info("Default " + Authenticator.class.getName() + " not loaded by protected ClassLoader: " + defaultAuthenticator);
     }
   }
   
@@ -84,8 +84,8 @@ public class DefaultAuthenticatorCleanUp implements ClassLoaderPreMortemCleanUp 
   }
 
   /**
-   * Recursively removed wrapped {@link Authenticator} loaded in this webapp. May be needed in case there are multiple CXF
-   * applications within the same container.
+   * Recursively removed wrapped {@link Authenticator} loaded in protected ClassLoader.
+   * May be needed in case there are multiple CXF applications within the same container.
    */
   @SuppressWarnings("WeakerAccess")
   protected void removeWrappedAuthenticators(final ClassLoaderLeakPreventor preventor,
@@ -105,7 +105,7 @@ public class DefaultAuthenticatorCleanUp implements ClassLoaderPreMortemCleanUp 
               final Authenticator wrapped = (Authenticator)f.get(owner);
               if(preventor.isLoadedInClassLoader(wrapped)) {
                 preventor.warn(Authenticator.class.getName() + ": " + wrapped + ", wrapped by " + authenticator + 
-                    ", is loaded by webapp classloader");
+                    ", is loaded by protected ClassLoader");
                 f.set(owner, null); // For added safety
               }
               else {

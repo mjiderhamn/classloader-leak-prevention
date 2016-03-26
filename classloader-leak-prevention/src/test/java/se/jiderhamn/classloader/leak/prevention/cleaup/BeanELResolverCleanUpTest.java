@@ -3,7 +3,6 @@ package se.jiderhamn.classloader.leak.prevention.cleaup;
 import javax.el.*;
 
 import org.junit.Before;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUpTestBase;
 import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUp;
 
 /**

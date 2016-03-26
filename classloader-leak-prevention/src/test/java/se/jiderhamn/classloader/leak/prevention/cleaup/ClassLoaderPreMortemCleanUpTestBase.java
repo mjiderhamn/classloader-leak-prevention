@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention;
+package se.jiderhamn.classloader.leak.prevention.cleaup;
 
 import java.lang.reflect.ParameterizedType;
 import java.util.Collections;
@@ -7,6 +7,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
 import se.jiderhamn.classloader.leak.Leaks;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
+import se.jiderhamn.classloader.leak.prevention.LoggerImpl;
+import se.jiderhamn.classloader.leak.prevention.PreClassLoaderInitiator;
 
 /**
  * Abstract base class for testing {@link ClassLoaderPreMortemCleanUp} implementations.
@@ -43,6 +47,7 @@ public abstract class ClassLoaderPreMortemCleanUpTestBase<C extends ClassLoaderP
    * garbage collected.
    * The default implementation will use the generics parameter type information.
    */
+  @SuppressWarnings("WeakerAccess")
   protected C getClassLoaderPreMortemCleanUp() throws IllegalAccessException, InstantiationException {
     ParameterizedType genericSuperclass = (ParameterizedType) getClass().getGenericSuperclass();
     Object actualType = genericSuperclass.getActualTypeArguments()[genericSuperclass.getActualTypeArguments().length - 1];

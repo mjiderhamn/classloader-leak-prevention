@@ -27,7 +27,7 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
     
     for(Driver driver : driversToDeregister) {
       try {
-        preventor.warn("JDBC driver loaded by web app deregistered: " + driver.getClass());
+        preventor.warn("JDBC driver loaded by protected ClassLoader deregistered: " + driver.getClass());
         DriverManager.deregisterDriver(driver);
       }
       catch (SQLException e) {
