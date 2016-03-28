@@ -19,18 +19,17 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.*;
-import java.net.URL;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.security.AccessControlContext;
-import java.security.DomainCombiner;
 import java.util.*;
 import java.util.concurrent.ThreadPoolExecutor;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
-import javax.swing.*;
 
 import se.jiderhamn.classloader.leak.prevention.cleanup.*;
+import se.jiderhamn.classloader.leak.prevention.preinit.*;
 
 import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookCleanUp.SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
@@ -165,9 +164,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
    */
   protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
-  /** are we running in the Oracle/Sun Java Runtime Environment? */
-  private boolean isOracleJRE;
-
   protected final Field java_lang_Thread_threadLocals;
 
   protected final Field java_lang_Thread_inheritableThreadLocals;
@@ -179,7 +175,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   @Deprecated // TODO REMOVE
   private final Field java_security_AccessControlContext$combiner;
   
-  private ClassLoaderLeakPreventor classLoaderLeakPreventor;
+  protected ClassLoaderLeakPreventor classLoaderLeakPreventor;
 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
   protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
@@ -218,49 +214,28 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     }
 
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
-
-    // Switch to system classloader in before we load/call some JRE stuff that will cause 
-    // the current classloader to be available for garbage collection
-    classLoaderLeakPreventorFactory.addPreInitiator("legacy", new PreClassLoaderInitiator() {
-      @Override
-      public void doOutsideClassLoader(Logger logger) {
-          // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
-          // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
-
-          initAwt();
     
-          initSecurityProviders();
-          
-          initJdbcDrivers();
-    
-          initSunAwtAppContext();
-    
-          initSecurityPolicy();
-    
-          initDocumentBuilderFactory();
-        
-          replaceDOMNormalizerSerializerAbortException();
-          
-          initDatatypeConverterImpl();
-    
-          initJavaxSecurityLoginConfiguration();
-    
-          initJarUrlConnection();
-    
-          /////////////////////////////////////////////////////
-          // Load Sun specific classes that may cause leaks
-          
-          initLdapPoolManager();
-          
-          initJava2dDisposer();
-          
-          initSunGC();
-          
-          initOracleJdbcThread();
-      }
-    });
-
     // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 Move to factory
+    // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
+    // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
+    classLoaderLeakPreventorFactory.addPreInitiator(new AwtToolkitInitiator());
+    // initSecurityProviders()
+    classLoaderLeakPreventorFactory.addPreInitiator(new JdbcDriversInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new SunAwtAppContextInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new SecurityPolicyInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new SecurityProvidersInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new DocumentBuilderFactoryInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new ReplaceDOMNormalizerSerializerAbortException());
+    classLoaderLeakPreventorFactory.addPreInitiator(new DatatypeConverterImplInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new JavaxSecurityLoginConfigurationInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new JarUrlConnectionInitiator());
+    // Load Sun specific classes that may cause leaks
+    classLoaderLeakPreventorFactory.addPreInitiator(new LdapPoolManagerInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new Java2dDisposerInitiator());
+    classLoaderLeakPreventorFactory.addPreInitiator(new SunGCInitiator());
+    if(startOracleTimeoutThread)
+      classLoaderLeakPreventorFactory.addPreInitiator(new OracleJdbcThreadInitiator());
+
     classLoaderLeakPreventorFactory.addCleanUp(new BeanIntrospectorCleanUp());
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
@@ -313,8 +288,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     info("  threadWaitMs = " + threadWaitMs + " ms");
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
-    isOracleJRE = classLoaderLeakPreventor.isOracleJRE();
-    
     info("Initializing context by loading some known offenders with system classloader");
 
     classLoaderLeakPreventor.runPreClassLoaderInitiators();
@@ -325,331 +298,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       }
       catch(Exception e){
         error(e);
-      }
-    }
-  }
-  
-  /**
-   * Perform action in the system ClassLoader, that may retain references to the contextClassLoader()
-   * The method is package protected so that it can be called from test cases.
-   * The motive for the custom {@link AccessControlContext} is to avoid spawned threads from inheriting all the 
-   * {@link java.security.ProtectionDomain}s of the running code, since that will include the web app classloader.
-   * This however means the {@link AccessControlContext} will have a {@link DomainCombiner} referencing the web app 
-   * classloader, which will be taken care of in {@link #stopThreads()}.
-   */
-  void doInSystemClassLoader(final Runnable runnable) { // TODO Remove
-    classLoaderLeakPreventor.doInLeakSafeClassLoader(runnable);
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * The first call to java.awt.Toolkit.getDefaultToolkit() will spawn a new thread with the
-   * same contextClassLoader as the caller.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initAwt() {
-    try {
-      java.awt.Toolkit.getDefaultToolkit(); // Will start a Thread
-    }
-    catch (Throwable t) {
-      error(t);
-      warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * Custom java.security.Provider loaded in your web application and registered with
-   * java.security.Security.addProvider() must be unregistered with java.security.Security.removeProvider()
-   * at application shutdown, or it will cause leaks.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initSecurityProviders() {
-    java.security.Security.getProviders();
-  }
-  
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * Your JDBC driver will be registered in java.sql.DriverManager, which means that if
-   * you include your JDBC driver inside your web application, there will be a reference
-   * to your webapps classloader from system classes (see
-   * <a href="http://java.jiderhamn.se/2012/01/01/classloader-leaks-ii-find-and-work-around-unwanted-references/">part II</a>).
-   * The simple solution is to put JDBC driver on server level instead, but you can also
-   * deregister the driver at application shutdown.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   * 
-   * TODO {@link DriverManagerCleanUp}
-   */
-  protected void initJdbcDrivers() {
-    java.sql.DriverManager.getDrivers(); // Load initial drivers using system classloader
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * There will be a strong reference from {@link sun.awt.AppContext#contextClassLoader} to the classloader of the calls
-   * to {@link sun.awt.AppContext#getAppContext()}. Avoid leak by forcing initialization using system classloader. 
-   * Note that Google Web Toolkit (GWT) will trigger this leak via its use of javax.imageio.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initSunAwtAppContext() {
-    try {
-      javax.imageio.ImageIO.getCacheDirectory(); // Will call sun.awt.AppContext.getAppContext()
-      new JEditorPane("text/plain", "dummy"); // According to GitHub user dany52, the above is not enough
-    }
-    catch (Throwable t) {
-      error(t);
-      warn("Consider adding -Djava.awt.headless=true to your JVM parameters");
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * javax.security.auth.Policy.getPolicy() will keep a strong static reference to
-   * the contextClassLoader of the first calling thread.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initSecurityPolicy() {
-    try {
-      Class.forName("javax.security.auth.Policy")
-          .getMethod("getPolicy")
-          .invoke(null);
-    }
-    catch (IllegalAccessException iaex) {
-      error(iaex);
-    }
-    catch (InvocationTargetException itex) {
-      error(itex);
-    }
-    catch (NoSuchMethodException nsmex) {
-      error(nsmex);
-    }
-    catch (ClassNotFoundException e) {
-      // Ignore silently - class is deprecated
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * The classloader of the first thread to call DocumentBuilderFactory.newInstance().newDocumentBuilder()
-   * seems to be unable to garbage collection. Is it believed this is caused by some JVM internal bug.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initDocumentBuilderFactory() {
-    try {
-      javax.xml.parsers.DocumentBuilderFactory.newInstance().newDocumentBuilder();
-    }
-    catch (Exception ex) { // Example: ParserConfigurationException
-      error(ex);
-    }
-  }
-
-  /**
-   * As reported at https://github.com/mjiderhamn/classloader-leak-prevention/issues/36, invoking
-   * {@code DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument().normalizeDocument();} or 
-   * <code>
-   *   Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
-   *   DOMImplementationLS implementation = (DOMImplementationLS)document.getImplementation();
-   *   implementation.createLSSerializer().writeToString(document);
-   * </code> may trigger leaks caused by the static fields {@link com.sun.org.apache.xerces.internal.dom.DOMNormalizer#abort} and
-   * {@link com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl#abort} respectively keeping stacktraces/backtraces
-   * that may include references to classes loaded by our web application.
-   * 
-   * Since the {@link java.lang.Throwable#backtrace} itself cannot be accessed via reflection (see 
-   * http://bugs.java.com/view_bug.do?bug_id=4496456) we need to replace the with new one without any stack trace.
-   */
-  protected void replaceDOMNormalizerSerializerAbortException() {
-    final RuntimeException abort = constructRuntimeExceptionWithoutStackTrace("abort", null);
-    if(abort != null) {
-      final Field normalizerAbort = findFieldOfClass("com.sun.org.apache.xerces.internal.dom.DOMNormalizer", "abort");
-      if(normalizerAbort != null)
-        setFinalStaticField(normalizerAbort, abort);
-
-      final Field serializerAbort = findFieldOfClass("com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl", "abort");
-      if(serializerAbort != null)
-        setFinalStaticField(serializerAbort, abort);
-    }
-  }
-  
-  /** Construct a new {@link RuntimeException} without any stack trace, in order to avoid any references back to this class */
-  protected RuntimeException constructRuntimeExceptionWithoutStackTrace(String message, Throwable cause) {
-    try {
-      final Constructor<RuntimeException> constructor = 
-          RuntimeException.class.getDeclaredConstructor(String.class, Throwable.class, Boolean.TYPE, Boolean.TYPE);
-      constructor.setAccessible(true);
-      return constructor.newInstance(message, cause, true, false /* disable stack trace */);
-    }
-    catch (Throwable e) { // InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException
-      warn("Unable to construct RuntimeException without stack trace. The likely reason is that you are using Java <= 1.6. " +
-          "No worries, except there is one kind of leak you're not protected from (https://github.com/mjiderhamn/classloader-leak-prevention/issues/36). " + 
-          "If you are already on Java 1.7+, please report issue to developer of this library!");
-      warn(e);
-      return null;
-    }
-  }
-
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * javax.xml.bind.DatatypeConverterImpl in the JAXB Reference Implementation shipped with JDK 1.6+ will
-   * keep a static reference (datatypeFactory) to a concrete subclass of javax.xml.datatype.DatatypeFactory,
-   * that is resolved when the class is loaded (which I believe happens if you have custom bindings that
-   * reference the static methods in javax.xml.bind.DatatypeConverter). It seems that if for example you
-   * have a version of Xerces inside your application, the factory method may resolve
-   * org.apache.xerces.jaxp.datatype.DatatypeFactoryImpl as the implementation to use (rather than
-   * com.sun.org.apache.xerces.internal.jaxp.datatype.DatatypeFactoryImpl shipped with the JDK), which
-   * means there will a reference from javax.xml.bind.DatatypeConverterImpl to your classloader.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initDatatypeConverterImpl() {
-    try {
-      Class.forName("javax.xml.bind.DatatypeConverterImpl"); // Since JDK 1.6. May throw java.lang.Error
-    }
-    catch (ClassNotFoundException e) {
-      // Do nothing
-    }
-    catch (Throwable t) {
-      warn(t);
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * The class javax.security.auth.login.Configuration will keep a strong static reference to the
-   * contextClassLoader of Thread from which the class is loaded.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initJavaxSecurityLoginConfiguration() {
-    try {
-      Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
-    }
-    catch (ClassNotFoundException e) {
-      // Do nothing
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * The caching mechanism of JarURLConnection can prevent JAR files to be reloaded. See
-   * <a href="http://bugs.sun.com/bugdatabase/view_bug.do;jsessionid=b8cdbff5fd7a2482996ac1c7f708?bug_id=4405789">this bug report</a>.
-   * It is not entirely clear whether this will actually leak classloaders.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initJarUrlConnection() {
-    // This probably does not affect classloaders, but prevents some problems with .jar files
-    try {
-      // URL needs to be well-formed, but does not need to exist
-      new URL("jar:file://dummy.jar!/").openConnection().setDefaultUseCaches(false);
-    }
-    catch (Exception ex) {
-      error(ex);
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * The contextClassLoader of the thread loading the com.sun.jndi.ldap.LdapPoolManager class may be kept
-   * from being garbage collected, since it will start a new thread if the system property.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initLdapPoolManager() {
-    try {
-      Class.forName("com.sun.jndi.ldap.LdapPoolManager");
-    }
-    catch(ClassNotFoundException cnfex) {
-      if(isOracleJRE)
-        error(cnfex);
-    }
-  }
-  
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * Loading the class sun.java2d.Disposer will spawn a new thread with the same contextClassLoader.
-   * <a href="https://issues.apache.org/bugzilla/show_bug.cgi?id=51687">More info</a>.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initJava2dDisposer() {
-    try {
-      Class.forName("sun.java2d.Disposer"); // Will start a Thread
-    }
-    catch (ClassNotFoundException cnfex) {
-      if(isOracleJRE && ! classLoaderLeakPreventor.isJBoss()) // JBoss blocks this package/class, so don't warn
-        error(cnfex);
-    }
-  }
-
-  /**
-   * To skip this step override this method in a subclass and make that subclass method empty.
-   * 
-   * sun.misc.GC.requestLatency(long), which is known to be called from
-   * javax.management.remote.rmi.RMIConnectorServer.start(), will cause the current
-   * contextClassLoader to be unavailable for garbage collection.
-   * 
-   * See http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initSunGC() {
-    try {
-      Class<?> gcClass = Class.forName("sun.misc.GC");
-      final Method requestLatency = gcClass.getDeclaredMethod("requestLatency", long.class);
-      requestLatency.invoke(null, 3600000L);
-    }
-    catch (ClassNotFoundException cnfex) {
-      if(isOracleJRE)
-        error(cnfex);
-    }
-    catch (NoSuchMethodException nsmex) {
-      error(nsmex);
-    }
-    catch (IllegalAccessException iaex) {
-      error(iaex);
-    }
-    catch (InvocationTargetException itex) {
-      error(itex);
-    }
-  }
-
-  /**
-   * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/8
-   * and https://github.com/mjiderhamn/classloader-leak-prevention/issues/23
-   * and http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
-   */
-  protected void initOracleJdbcThread() {
-    if(startOracleTimeoutThread) {
-      // Cause oracle.jdbc.driver.OracleTimeoutPollingThread to be started with contextClassLoader = system classloader  
-      try {
-        Class.forName("oracle.jdbc.driver.OracleTimeoutThreadPerVM");
-      }
-      catch (ClassNotFoundException e) {
-        // Ignore silently - class not present
-      }
-
-      // Cause oracle.jdbc.driver.BlockSource.ThreadedCachingBlockSource.BlockReleaser to be started with contextClassLoader = system classloader  
-      try {
-        Class.forName("oracle.jdbc.driver.BlockSource$ThreadedCachingBlockSource$BlockReleaser");
-      }
-      catch (ClassNotFoundException e) {
-        // Ignore silently - class not present
       }
     }
   }
@@ -756,7 +404,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   
   protected void clearThreadLocalsOfAllThreads() {
     final ThreadLocalProcessor clearingThreadLocalProcessor = getThreadLocalProcessor();
-    for(Thread thread : getAllThreads()) {
+    for(Thread thread : classLoaderLeakPreventor.getAllThreads()) {
       forEachThreadLocalInThread(thread, clearingThreadLocalProcessor);
     }
   }
@@ -777,7 +425,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     final Field inheritedAccessControlContext = findField(Thread.class, "inheritedAccessControlContext");
 
     final boolean waitForThreads = threadWaitMs > 0;
-    for(Thread thread : getAllThreads()) {
+    for(Thread thread : classLoaderLeakPreventor.getAllThreads()) {
       final Runnable runnable = (oracleTarget != null) ? 
           (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
           (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
@@ -1106,64 +754,15 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   }
   
   protected Class<?> findClass(String className, boolean trySystemCL) {
-    try {
-      return Class.forName(className);
-    }
-//    catch (NoClassDefFoundError e) {
-//      // Silently ignore
-//      return null;
-//    }
-    catch (ClassNotFoundException e) {
-      if (trySystemCL) {
-        try {
-          return Class.forName(className, true, ClassLoader.getSystemClassLoader());
-        } catch (ClassNotFoundException e1) {
-          // Silently ignore
-          return null;
-        }
-      }
-      // Silently ignore
-      return null;
-    }
-    catch (Exception ex) { // Example SecurityException
-      warn(ex);
-      return null;
-    }
+    return classLoaderLeakPreventor.findClass(className, trySystemCL);
   }
   
   protected Field findField(Class<?> clazz, String fieldName) {
-    if(clazz == null)
-      return null;
-
-    try {
-      final Field field = clazz.getDeclaredField(fieldName);
-      field.setAccessible(true); // (Field is probably private) 
-      return field;
-    }
-    catch (NoSuchFieldException ex) {
-      // Silently ignore
-      return null;
-    }
-    catch (Exception ex) { // Example SecurityException
-      warn(ex);
-      return null;
-    }
+    return classLoaderLeakPreventor.findField(clazz, fieldName);
   }
   
   protected <T> T getStaticFieldValue(Field field) {
-    try {
-      if(! Modifier.isStatic(field.getModifiers())) {
-        warn(field.toString() + " is not static");
-        return null;
-      }
-      
-      return (T) field.get(null);
-    }
-    catch (Exception ex) {
-      warn(ex);
-      // Silently ignore
-      return null;
-    }
+    return classLoaderLeakPreventor.getStaticFieldValue(field);
   }
   
   protected <T> T getFieldValue(Object obj, String fieldName) {
@@ -1181,47 +780,9 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       return null;
     }
   }
-  
-  protected void setFinalStaticField(Field field, Object newValue) {
-    // Allow modification of final field 
-    try {
-      Field modifiersField = Field.class.getDeclaredField("modifiers");
-      modifiersField.setAccessible(true);
-      modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-    }
-    catch (NoSuchFieldException e) {
-      warn("Unable to get 'modifiers' field of java.lang.Field");
-    }
-    catch (IllegalAccessException e) {
-      warn("Unable to set 'modifiers' field of java.lang.Field");
-    }
-    catch (Throwable t) {
-      warn(t);
-    }
 
-    // Update the field
-    try {
-      field.set(null, newValue);
-    }
-    catch (Throwable e) {
-      error("Error setting value of " + field + " to " + newValue);
-    }
-  }
-  
   protected Method findMethod(Class<?> clazz, String methodName, Class... parameterTypes) {
-    if(clazz == null)
-      return null;
-
-    try {
-      final Method method = clazz.getDeclaredMethod(methodName, parameterTypes);
-      method.setAccessible(true);
-      return method;
-    }
-    catch (NoSuchMethodException ex) {
-      warn(ex);
-      // Silently ignore
-      return null;
-    }
+    return classLoaderLeakPreventor.findMethod(clazz, methodName, parameterTypes);
   }
   
   /** Is the JVM currently shutting down? */
@@ -1239,37 +800,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     }
   }
 
-  /** Get a Collection with all Threads. 
-   * This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.getThreads() */
-  protected Collection<Thread> getAllThreads() {
-    // This is some orders of magnitude slower...
-    // return Thread.getAllStackTraces().keySet();
-    
-    // Find root ThreadGroup
-    ThreadGroup tg = Thread.currentThread().getThreadGroup();
-    while(tg.getParent() != null)
-      tg = tg.getParent();
-    
-    // Note that ThreadGroup.enumerate() silently ignores all threads that does not fit into array
-    int guessThreadCount = tg.activeCount() + 50;
-    Thread[] threads = new Thread[guessThreadCount];
-    int actualThreadCount = tg.enumerate(threads);
-    while(actualThreadCount == guessThreadCount) { // Map was filled, there may be more
-      guessThreadCount *= 2;
-      threads = new Thread[guessThreadCount];
-      actualThreadCount = tg.enumerate(threads);
-    }
-    
-    // Filter out nulls
-    final List<Thread> output = new ArrayList<Thread>();
-    for(Thread t : threads) {
-      if(t != null) {
-        output.add(t);
-      }
-    }
-    return output;
-  }
-  
   /**
    * Loop ThreadLocals and inheritable ThreadLocals in current Thread
    * and for each found, invoke the callback interface
@@ -1324,6 +854,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
                 // In theory a new transaction can be started and suspended between where we read and write the state,
                 // and flag, therefore we suspend the thread meanwhile.
                 try {
+                  //noinspection deprecation
                   thread.suspend(); // Suspend the thread
                   if(getFieldValue(resin_suspendState, value) != null) { // Re-read suspend state when thread is suspended
                     final Object isSuspended = getFieldValue(resin_isSuspended, value);
@@ -1343,6 +874,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
                   error(t);
                 }
                 finally {
+                  //noinspection deprecation
                   thread.resume();
                 }
               }
@@ -1591,8 +1123,10 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       }
       
       info(getName() + " about to kill " + jurtThread);
-      if(jurtThread.isAlive())
+      if(jurtThread.isAlive()) {
+        //noinspection deprecation
         jurtThread.stop();
+      }
     }
   }
 }

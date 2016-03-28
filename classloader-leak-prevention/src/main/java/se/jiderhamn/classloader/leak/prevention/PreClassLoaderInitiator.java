@@ -13,6 +13,6 @@ public interface PreClassLoaderInitiator {
    * thread when method is invoked.
    * Must NOT have modified {@link Thread#contextClassLoader} of the current thread when returning.
    */
-  void doOutsideClassLoader(Logger logger);
+  void doOutsideClassLoader(ClassLoaderLeakPreventor preventor);
   
 }

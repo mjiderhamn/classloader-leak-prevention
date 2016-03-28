@@ -13,6 +13,7 @@ import java.util.List;
  * This class helps prevent classloader leaks.
  * @author Mattias Jiderhamn
  */
+@SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventor {
   
   private static final ProtectionDomain[] NO_DOMAINS = new ProtectionDomain[0];
@@ -68,7 +69,7 @@ public class ClassLoaderLeakPreventor {
       @Override
       public void run() {
         for(PreClassLoaderInitiator preClassLoaderInitiator : preClassLoaderInitiators) {
-          preClassLoaderInitiator.doOutsideClassLoader(logger);
+          preClassLoaderInitiator.doOutsideClassLoader(ClassLoaderLeakPreventor.this);
         }
       }
     });
@@ -83,7 +84,7 @@ public class ClassLoaderLeakPreventor {
    * avoid leaking. This however means the {@link AccessControlContext} will have a {@link DomainCombiner} referencing the 
    * classloader, which will be taken care of in {@link #stopThreads()} TODO!!!.
    */
-   public void doInLeakSafeClassLoader(final Runnable runnable) { // TODO Make non-public
+   protected void doInLeakSafeClassLoader(final Runnable runnable) {
      final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
      
      try {
@@ -192,7 +193,16 @@ public class ClassLoaderLeakPreventor {
   public ClassLoader getClassLoader() {
     return classLoader;
   }
-  
+
+  /**
+   * Get {@link ClassLoader} to be used when invoking the {@link PreClassLoaderInitiator}s.
+   * This will normally be the {@link ClassLoader#getSystemClassLoader()}, but could be any other framework or 
+   * app server classloader. Normally, but not necessarily, a parent of {@link #classLoader}.
+   */
+  public ClassLoader getLeakSafeClassLoader() {
+    return leakSafeClassLoader;
+  }
+
   /** Test if provided object is loaded by {@link #classLoader} */
   public boolean isLoadedInClassLoader(Object o) {
     return (o instanceof Class) && isLoadedByClassLoader((Class<?>)o) || // Object is a java.lang.Class instance 
@@ -355,6 +365,15 @@ public class ClassLoaderLeakPreventor {
     }
   }
   
+  public Method findMethod(String className, String methodName, Class... parameterTypes) {
+    Class<?> clazz = findClass(className);
+    if(clazz != null) {
+      return findMethod(clazz, methodName, parameterTypes);
+    }
+    else 
+      return null;
+  }
+  
   public Method findMethod(Class<?> clazz, String methodName, Class... parameterTypes) {
     if(clazz == null)
       return null;
@@ -371,6 +390,37 @@ public class ClassLoaderLeakPreventor {
     }
   }
 
+  /** Get a Collection with all Threads. 
+   * This method is heavily inspired by org.apache.catalina.loader.WebappClassLoader.getThreads() */
+  public Collection<Thread> getAllThreads() {
+    // This is some orders of magnitude slower...
+    // return Thread.getAllStackTraces().keySet();
+    
+    // Find root ThreadGroup
+    ThreadGroup tg = Thread.currentThread().getThreadGroup();
+    while(tg.getParent() != null)
+      tg = tg.getParent();
+    
+    // Note that ThreadGroup.enumerate() silently ignores all threads that does not fit into array
+    int guessThreadCount = tg.activeCount() + 50;
+    Thread[] threads = new Thread[guessThreadCount];
+    int actualThreadCount = tg.enumerate(threads);
+    while(actualThreadCount == guessThreadCount) { // Map was filled, there may be more
+      guessThreadCount *= 2;
+      threads = new Thread[guessThreadCount];
+      actualThreadCount = tg.enumerate(threads);
+    }
+    
+    // Filter out nulls
+    final List<Thread> output = new ArrayList<Thread>();
+    for(Thread t : threads) {
+      if(t != null) {
+        output.add(t);
+      }
+    }
+    return output;
+  }
+  
   /**
    * Override this method if you want to customize how we determine if we're running in
    * JBoss WildFly (a.k.a JBoss AS).
@@ -388,10 +438,11 @@ public class ClassLoaderLeakPreventor {
   }
   
   /**
+   * Are we running in the Oracle/Sun Java Runtime Environment?
    * Override this method if you want to customize how we determine if this is a Oracle/Sun
    * Java Runtime Environment.
    */
-  protected boolean isOracleJRE() {
+  public boolean isOracleJRE() {
     String javaVendor = System.getProperty("java.vendor");
     
     return javaVendor.startsWith("Oracle") || javaVendor.startsWith("Sun");

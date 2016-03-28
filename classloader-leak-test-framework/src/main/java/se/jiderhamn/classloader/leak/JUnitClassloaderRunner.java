@@ -103,6 +103,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myMethod = null;
       }
       catch (Exception e) {
+        e.printStackTrace(System.err); // Print here in case other exception is thrown in finally block
         throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
       }
       finally {
@@ -178,14 +179,14 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
   }
 
   /** Make sure Garbage Collection has been run N no of times */
-  private static void forceGc(int n) {
+  public static void forceGc(int n) {
     for(int i = 0; i < n; i++) {
       forceGc();
     }
   }
   
   /** Make sure Garbage Collection has been run */
-  private static void forceGc() {
+  public static void forceGc() {
     WeakReference<Object> ref = new WeakReference<Object>(new Object());
     while(ref.get() != null) { // Until garbage collection has actually been run
       System.gc();

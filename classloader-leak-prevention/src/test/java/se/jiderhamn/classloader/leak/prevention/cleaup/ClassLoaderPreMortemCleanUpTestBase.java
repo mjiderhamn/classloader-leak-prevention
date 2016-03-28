@@ -1,16 +1,11 @@
 package se.jiderhamn.classloader.leak.prevention.cleaup;
 
-import java.lang.reflect.ParameterizedType;
-import java.util.Collections;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
 import se.jiderhamn.classloader.leak.Leaks;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
-import se.jiderhamn.classloader.leak.prevention.LoggerImpl;
-import se.jiderhamn.classloader.leak.prevention.PreClassLoaderInitiator;
+import se.jiderhamn.classloader.leak.prevention.PreventionsTestBase;
 
 /**
  * Abstract base class for testing {@link ClassLoaderPreMortemCleanUp} implementations.
@@ -18,7 +13,7 @@ import se.jiderhamn.classloader.leak.prevention.PreClassLoaderInitiator;
  * @author Mattias Jiderhamn
  */
 @RunWith(JUnitClassloaderRunner.class)
-public abstract class ClassLoaderPreMortemCleanUpTestBase<C extends ClassLoaderPreMortemCleanUp> {
+public abstract class ClassLoaderPreMortemCleanUpTestBase<C extends ClassLoaderPreMortemCleanUp> extends PreventionsTestBase<C> {
   
   /** 
    * Test case that verifies that {@link #triggerLeak()} indeed does cause a leak, in case the
@@ -49,28 +44,7 @@ public abstract class ClassLoaderPreMortemCleanUpTestBase<C extends ClassLoaderP
    */
   @SuppressWarnings("WeakerAccess")
   protected C getClassLoaderPreMortemCleanUp() throws IllegalAccessException, InstantiationException {
-    ParameterizedType genericSuperclass = (ParameterizedType) getClass().getGenericSuperclass();
-    Object actualType = genericSuperclass.getActualTypeArguments()[genericSuperclass.getActualTypeArguments().length - 1];
-    
-    Class<C> cleanUpImplClass = (actualType instanceof ParameterizedType) ? 
-        (Class<C>) ((ParameterizedType)actualType).getRawType() :
-        (Class<C>) actualType;
-      
-    return cleanUpImplClass.newInstance();
+    return getTestedImplementation();
   }
 
-  /**
-   * Concrete tests may override this method, in case they to provide a specific {@link ClassLoaderLeakPreventor}
-   * to the {@link ClassLoaderPreMortemCleanUp}.
-   * @return
-   */
-  @SuppressWarnings("WeakerAccess")
-  protected ClassLoaderLeakPreventor getClassLoaderLeakPreventor() {
-    return new ClassLoaderLeakPreventor(getClass().getClassLoader().getParent(),
-        getClass().getClassLoader(),
-        new LoggerImpl(), 
-        Collections.<PreClassLoaderInitiator>emptyList(),
-        Collections.<ClassLoaderPreMortemCleanUp>emptyList());
-  }
-  
 }

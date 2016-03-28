@@ -155,6 +155,16 @@
       <version>2.1.19</version>
       <scope>test</scope>
     </dependency>
+    
+    <!-- Example dependency for test Oracle JDBC -->
+    <!--
+    <dependency>
+      <groupId>com.oracle</groupId>
+      <artifactId>ojdbc</artifactId>
+      <version>11.2.0.4</version>
+      <scope>test</scope>
+    </dependency>
+    -->
   </dependencies>
 
   <build>
