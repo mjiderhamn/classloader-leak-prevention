@@ -2,6 +2,7 @@ package se.jiderhamn.classloader.leak;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.net.URL;
 
@@ -13,6 +14,7 @@ import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
 import org.junit.runners.model.TestClass;
 import se.jiderhamn.HeapDumper;
+import se.jiderhamn.classloader.PackagesLoadedOutsideClassLoader;
 import se.jiderhamn.classloader.RedefiningClassLoader;
 
 import static se.jiderhamn.HeapDumper.HEAP_DUMP_EXTENSION;
@@ -35,7 +37,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     final LeakPreventor leakPreventorAnn = method.getMethod().getDeclaringClass().getAnnotation(LeakPreventor.class);
     Class<? extends Runnable> preventorClass = (leakPreventorAnn != null) ? leakPreventorAnn.value() : null;
 
-    return new SeparateClassLoaderInvokeMethod(method, test, preventorClass);
+    return new SeparateClassLoaderInvokeMethod(method, test, preventorClass, 
+        test.getClass().getAnnotation(PackagesLoadedOutsideClassLoader.class));
   }
   
   private class SeparateClassLoaderInvokeMethod extends InvokeMethod {
@@ -58,11 +61,16 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     /** Class that can be used to remove the leak */
     private Class<? extends Runnable> preventorClass;
     
+    /** Packages to be ignored by {@link RedefiningClassLoader}. If null, will use defaults. */
+    private final String[] ignoredPackages;
+    
     private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target) {
-      this(testMethod, target, null);
+      this(testMethod, target, null, null);
     }
     
-    private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target, Class<? extends Runnable> preventorClass) {
+    private SeparateClassLoaderInvokeMethod(FrameworkMethod testMethod, Object target, 
+                                            Class<? extends Runnable> preventorClass,
+                                            PackagesLoadedOutsideClassLoader packagesLoadedOutsideClassLoader) {
       super(testMethod, target);
       originalMethod = testMethod.getMethod();
 
@@ -72,6 +80,10 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       this.dumpHeapOnError = (leakAnn != null && leakAnn.dumpHeapOnError()); // Default to false
 
       this.preventorClass = preventorClass;
+      this.ignoredPackages = (packagesLoadedOutsideClassLoader == null) ? null :
+          packagesLoadedOutsideClassLoader.addToDefaults() ? 
+              appendArrays(RedefiningClassLoader.DEFAULT_IGNORED_PACKAGES, packagesLoadedOutsideClassLoader.packages()) :
+          packagesLoadedOutsideClassLoader.packages();
     }
 
     @SuppressWarnings("UnusedAssignment")
@@ -80,7 +92,9 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
       final ClassLoader clBefore = Thread.currentThread().getContextClassLoader();
 
       final String testName = originalMethod.getDeclaringClass().getName() + '.' + originalMethod.getName();
-      RedefiningClassLoader myClassLoader = new RedefiningClassLoader(clBefore, testName);
+      RedefiningClassLoader myClassLoader = (ignoredPackages != null) ? 
+          new RedefiningClassLoader(clBefore, testName, ignoredPackages): 
+          new RedefiningClassLoader(clBefore, testName);
       
       try {
         Thread.currentThread().setContextClassLoader(myClassLoader);
@@ -252,6 +266,14 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     catch (Exception e) {
       return null;
     }
+  }
+  
+  /** Append two arrays */
+  private <T> T[] appendArrays(T[] arr1, T[] arr2) {
+    T[] output = (T[]) Array.newInstance(arr1.getClass().getComponentType(), arr1.length + arr2.length);
+    System.arraycopy(arr1, 0, output, 0, arr1.length);
+    System.arraycopy(arr2, 0, output, arr1.length, arr2.length);
+    return output;
   }
 
 }

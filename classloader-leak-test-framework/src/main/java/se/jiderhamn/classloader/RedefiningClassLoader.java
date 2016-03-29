@@ -25,12 +25,20 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   }
 
   public RedefiningClassLoader(ClassLoader parent, String name) {
-    super(parent, DEFAULT_IGNORED_PACKAGES);
-    this.name = name;
+    this(parent, name, DEFAULT_IGNORED_PACKAGES);
   }
 
   RedefiningClassLoader(String name) {
-    super(DEFAULT_IGNORED_PACKAGES);
+    this(name, DEFAULT_IGNORED_PACKAGES);
+  }
+
+  public RedefiningClassLoader(ClassLoader parent, String name, String[] ignoredPackages) {
+    super(parent, ignoredPackages);
+    this.name = name;
+  }
+
+  RedefiningClassLoader(String name, String[] ignoredPackages) {
+    super(ignoredPackages);
     this.name = name;
   }
 
