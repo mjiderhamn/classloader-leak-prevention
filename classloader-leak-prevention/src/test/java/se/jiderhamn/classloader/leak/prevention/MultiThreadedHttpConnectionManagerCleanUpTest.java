@@ -24,20 +24,17 @@ public class MultiThreadedHttpConnectionManagerCleanUpTest extends PreventionsTe
   @Test
   @Leaks
   public void leak() {
-      Client client = ApacheHttpClient.create(new DefaultClientConfig());
-      try {
-    	  //it doesn't matter where we make our call, we only want to initiate connections to create the leak
-	      WebResource webResource = client.resource("http://localhost:1234");
-	      webResource.accept("application/json").get(ClientResponse.class);
-      } catch (Throwable ex) {
-    	  //
-      }
-      client.destroy();
+	  createTheLeak();
   }
   
   @Leaks(false)
   @Test
   public void noLeakAfterCleanerRun() throws Exception {
+	  createTheLeak();
+	  new MultiThreadedHttpConnectionManagerCleanUp().cleanUp(getClassLoaderLeakPreventor());
+  }
+  
+  private void createTheLeak() {
       Client client = ApacheHttpClient.create(new DefaultClientConfig());
       try {
     	  //it doesn't matter where we make our call, we only want to initiate connections to create the leak
@@ -47,7 +44,6 @@ public class MultiThreadedHttpConnectionManagerCleanUpTest extends PreventionsTe
     	  //
       }
       client.destroy();
-	  new MultiThreadedHttpConnectionManagerCleanUp().cleanUp(getClassLoaderLeakPreventor());
   }
 
 }
