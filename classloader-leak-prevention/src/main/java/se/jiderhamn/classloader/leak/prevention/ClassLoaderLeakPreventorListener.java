@@ -237,6 +237,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       classLoaderLeakPreventorFactory.addPreInitiator(new OracleJdbcThreadInitiator());
 
     classLoaderLeakPreventorFactory.addCleanUp(new BeanIntrospectorCleanUp());
+    
+    classLoaderLeakPreventorFactory.addCleanUp(new MultiThreadedHttpConnectionManagerCleanUp());
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new BeanValidationCleanUp());

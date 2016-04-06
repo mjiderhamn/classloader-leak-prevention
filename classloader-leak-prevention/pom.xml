@@ -126,7 +126,15 @@
       <artifactId>el-api</artifactId>
       <version>2.2.1-b04</version>
       <scope>test</scope>
+    </dependency>
+    <!-- MultiThreadedHttpConnectionManagerCleanUpTest --> 
+    <dependency>
+      <groupId>com.sun.jersey.contribs</groupId>
+      <artifactId>jersey-apache-client</artifactId>
+      <version>1.19</version>
+      <scope>test</scope>
     </dependency> 
+    
     <!-- Test leak in CXF custom authenticator -->
     <dependency>
       <groupId>org.apache.cxf</groupId>
