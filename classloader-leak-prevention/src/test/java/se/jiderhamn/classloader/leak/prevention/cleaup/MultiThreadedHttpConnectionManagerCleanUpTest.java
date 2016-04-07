@@ -23,7 +23,7 @@ public class MultiThreadedHttpConnectionManagerCleanUpTest extends ClassLoaderPr
             WebResource webResource = client.resource("http://localhost:1234");
             webResource.accept("application/json").get(ClientResponse.class);
         } catch (Throwable ex) {
-            //
+            //exception thrown for a non existing url, we do not need to call a real url, only to start the relevant leaking classes 
         }
         client.destroy();
     }
