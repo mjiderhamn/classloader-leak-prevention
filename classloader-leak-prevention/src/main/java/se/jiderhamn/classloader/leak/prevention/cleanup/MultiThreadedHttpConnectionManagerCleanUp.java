@@ -18,7 +18,7 @@ public class MultiThreadedHttpConnectionManagerCleanUp implements ClassLoaderPre
 	    	  connManager.getMethod("shutdownAll").invoke(null);
 	      }
 	      catch (Exception ex) {
-	    	  //
+	          preventor.warn("Unable to invoke method.");
 	      }
 	    }
   }
