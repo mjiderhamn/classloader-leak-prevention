@@ -9,7 +9,7 @@ import com.sun.jersey.client.apache.ApacheHttpClient;
 import se.jiderhamn.classloader.leak.prevention.cleanup.MultiThreadedHttpConnectionManagerCleanUp;
 
 /**
- * Test case for leaks caused by @link com.sun.jersey.client.apache.ApacheHttpClient failing to close @link org.apache.commons.httpclient.MultiThreadedHttpConnectionManager
+ * Test case for leaks caused by {@link com.sun.jersey.client.apache.ApacheHttpClient} failing to close {@link org.apache.commons.httpclient.MultiThreadedHttpConnectionManager}
  * 
  * @author Marian Petrik
  */

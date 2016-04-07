@@ -238,7 +238,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
 
     classLoaderLeakPreventorFactory.addCleanUp(new BeanIntrospectorCleanUp());
     
-    classLoaderLeakPreventorFactory.addCleanUp(new MultiThreadedHttpConnectionManagerCleanUp());
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new BeanValidationCleanUp());
@@ -249,6 +248,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventorFactory.addCleanUp(new IntrospectionUtilsCleanUp());
     // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
     classLoaderLeakPreventorFactory.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
+    classLoaderLeakPreventorFactory.addCleanUp(new MultiThreadedHttpConnectionManagerCleanUp());
     
     ////////////////////
     // Fix generic leaks
