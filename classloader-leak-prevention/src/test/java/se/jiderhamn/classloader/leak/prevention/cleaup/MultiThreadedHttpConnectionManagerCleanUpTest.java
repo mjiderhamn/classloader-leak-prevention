@@ -16,7 +16,7 @@ import se.jiderhamn.classloader.leak.prevention.cleanup.MultiThreadedHttpConnect
 public class MultiThreadedHttpConnectionManagerCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<MultiThreadedHttpConnectionManagerCleanUp> {
 
     @Override
-    protected void triggerLeak() throws ClassNotFoundException {
+    protected void triggerLeak() {
         Client client = ApacheHttpClient.create(new DefaultClientConfig());
         try {
             // it doesn't matter where we make our call, we only want to initiate connections to create the leak
