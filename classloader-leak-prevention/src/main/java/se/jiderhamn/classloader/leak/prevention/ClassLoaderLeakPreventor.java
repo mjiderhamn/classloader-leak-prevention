@@ -1,5 +1,8 @@
 package se.jiderhamn.classloader.leak.prevention;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.RuntimeMXBean;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -15,12 +18,15 @@ import java.util.List;
  */
 @SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventor {
+
+  /** Default no of milliseconds to wait for threads to finish execution */
+  public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
   
   private static final ProtectionDomain[] NO_DOMAINS = new ProtectionDomain[0];
 
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
   
-  private final Field java_security_AccessControlContext$combiner;
+  /* TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 private */ public final Field java_security_AccessControlContext$combiner;
   
   private final Field java_security_AccessControlContext$parent;
   
@@ -230,6 +236,32 @@ public class ClassLoaderLeakPreventor {
     return isLoadedInClassLoader(thread) || // Custom Thread class in classloader
        isClassLoaderOrChild(thread.getContextClassLoader()); // Running in classloader
   }
+  
+  /**
+   * Make the provided Thread stop sleep(), wait() or join() and then give it the provided no of milliseconds to finish
+   * executing. 
+   * @param thread The thread to wake up and wait for
+   * @param waitMs The no of milliseconds to wait. If <= 0 this method does nothing.
+   */
+  public void waitForThread(Thread thread, long waitMs) {
+    if(waitMs > 0) {
+      try {
+        thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
+      }
+      catch (SecurityException e) {
+        error(e);
+      }
+
+      try {
+        thread.join(waitMs); // Wait for thread to run
+      }
+      catch (InterruptedException e) {
+        // Do nothing
+      }
+    }
+  }
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {
     Field staticField = findField(clazz, fieldName);
@@ -447,6 +479,38 @@ public class ClassLoaderLeakPreventor {
     
     return javaVendor.startsWith("Oracle") || javaVendor.startsWith("Sun");
   }
+
+  /**
+   * Unlike <code>{@link System#gc()}</code> this method guarantees that garbage collection has been performed before
+   * returning.
+   */
+  public static void gc() {
+    if (isDisableExplicitGCEnabled()) {
+      System.err.println(ClassLoaderLeakPreventorListener.class.getSimpleName() + ": "
+          + "Skipping GC call since -XX:+DisableExplicitGC is supplied as VM option.");
+      return;
+    }
+    
+    Object obj = new Object();
+    WeakReference<Object> ref = new WeakReference<Object>(obj);
+    //noinspection UnusedAssignment
+    obj = null;
+    while(ref.get() != null) {
+      System.gc();
+    }
+  }
+  
+  /**
+   * Check is "-XX:+DisableExplicitGC" enabled.
+   *
+   * @return true is "-XX:+DisableExplicitGC" is set als vm argument, false otherwise.
+   */
+  private static boolean isDisableExplicitGCEnabled() {
+    RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
+    List<String> aList = bean.getInputArguments();
+
+    return aList.contains("-XX:+DisableExplicitGC");
+  }  
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Delegate methods for Logger

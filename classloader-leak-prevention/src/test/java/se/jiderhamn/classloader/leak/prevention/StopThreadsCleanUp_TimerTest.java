@@ -7,15 +7,14 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import se.jiderhamn.classloader.leak.JUnitClassloaderRunner;
 import se.jiderhamn.classloader.leak.LeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.cleanup.StopThreadsCleanUp;
 
 /**
  * @author Mattias Jiderhamn
  */
 @RunWith(JUnitClassloaderRunner.class)
-@LeakPreventor(TimerTest.Preventor.class)
-public class TimerTest {
-  
-  // private Timer timer;
+@LeakPreventor(StopThreadsCleanUp_TimerTest.Preventor.class)
+public class StopThreadsCleanUp_TimerTest {
   
   /** 
    * Having a custom ThreadLocal with at non-custom value does not leak, since the key in the ThreadLocalMap is weak
@@ -23,16 +22,21 @@ public class TimerTest {
   @Test
   public void createTimer() throws IllegalAccessException, NoSuchFieldException {
     new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
+    Thread.yield(); // Allow the Timer thread to start
   }
   
   public static class Preventor implements Runnable {
     public void run() {
-      final TimerThreadLeakPreventor timerThreadLeakPreventor = new TimerThreadLeakPreventor();
-      final Collection<Thread> threads = timerThreadLeakPreventor.getAllThreads();
+      ClassLoaderLeakPreventorFactory factory = new ClassLoaderLeakPreventorFactory();
+      final ClassLoaderLeakPreventor preventor = factory.newLeakPreventor();
+
+      final TimerThreadsCleanUp timerThreadsCleanUp = new TimerThreadsCleanUp();
+
+      final Collection<Thread> threads = preventor.getAllThreads();
       for(Thread thread : threads) {
         if("java.util.TimerThread".equals(thread.getClass().getName())) {
           System.out.println(thread + " is a TimerThread");
-          timerThreadLeakPreventor.stopTimerThread(thread);
+          timerThreadsCleanUp.stopTimerThread(preventor, thread);
           try {
             thread.join(10000); // Give thread up to 10 seconds to finish
           }
@@ -44,13 +48,16 @@ public class TimerTest {
     }
   }
   
-  private static class TimerThreadLeakPreventor extends ClassLoaderLeakPreventorListener {
-    public Collection<Thread> getAllThreads() {
-      return classLoaderLeakPreventor.getAllThreads();
+  private static class TimerThreadsCleanUp extends StopThreadsCleanUp {
+    public TimerThreadsCleanUp() {
+      super(true);
     }
-    
-    public void stopTimerThread(Thread thread) {
-      super.stopTimerThread(thread);
+
+    /** Change visibility */
+    @Override
+    public void stopTimerThread(ClassLoaderLeakPreventor preventor, Thread thread) {
+      super.stopTimerThread(preventor, thread);
     }
   }
+
 }

@@ -15,15 +15,11 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
-import java.lang.management.ManagementFactory;
-import java.lang.management.RuntimeMXBean;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.security.AccessControlContext;
 import java.util.*;
-import java.util.concurrent.ThreadPoolExecutor;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
@@ -124,12 +120,7 @@ import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookClean
  */
 @SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventorListener implements ServletContextListener {
-  
-  /** Default no of milliseconds to wait for threads to finish execution */
-  public static final int THREAD_WAIT_MS_DEFAULT = 5 * 1000; // 5 seconds
 
-  public static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
-  
   /** Class name for per thread transaction in Caucho Resin transaction manager */
   public static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
 
@@ -138,9 +129,11 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   
   
   /** Should threads tied to the web app classloader be forced to stop at application shutdown? */
+  @Deprecated
   protected boolean stopThreads = true;
   
   /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
+  @Deprecated
   protected boolean stopTimerThreads = true;
   
   /** Should shutdown hooks registered from the application be executed at application shutdown? */
@@ -156,7 +149,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   /** 
    * No of milliseconds to wait for threads to finish execution, before stopping them.
    */
-  protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
+  @Deprecated // TODO StopThreadsCleanUp only https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
+  protected int threadWaitMs = ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT;
 
   /** 
    * No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
@@ -172,25 +166,16 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
-  @Deprecated // TODO REMOVE
-  private final Field java_security_AccessControlContext$combiner;
-  
   protected ClassLoaderLeakPreventor classLoaderLeakPreventor;
 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
   protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
-
-  /** Allow setting this in test cases */
-  void setStopThreads(boolean stopThreads) {
-    this.stopThreads = stopThreads;
-  }
 
   public ClassLoaderLeakPreventorListener() {
     // Initialize some reflection variables
     java_lang_Thread_threadLocals = findField(Thread.class, "threadLocals");
     java_lang_Thread_inheritableThreadLocals = findField(Thread.class, "inheritableThreadLocals");
     java_lang_ThreadLocal$ThreadLocalMap_table = findFieldOfClass("java.lang.ThreadLocal$ThreadLocalMap", "table");
-    java_security_AccessControlContext$combiner = findField(AccessControlContext.class, "combiner");
     
     if(java_lang_Thread_threadLocals == null)
       error("java.lang.Thread.threadLocals not found; something is seriously wrong!");
@@ -262,6 +247,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventorFactory.addCleanUp(new SecurityProviderCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new ProxySelectorCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new RmiTargetsCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new StopThreadsCleanUp(true, true
+        /* TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 */));
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory
         .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
@@ -277,7 +264,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
     executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
     startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
-    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", THREAD_WAIT_MS_DEFAULT);
+    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
     shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
     info("Settings for " + this.getClass().getName() + " (CL: 0x" +
@@ -325,17 +312,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     
     classLoaderLeakPreventor.runCleanUps();
 
-    //////////////////
-    // Fix known leaks
-    //////////////////
-    
-    // Force the execution of the cleanup code for JURT; see https://issues.apache.org/ooo/show_bug.cgi?id=122517
-    forceStartOpenOfficeJurtCleanup(); // (Do this before stopThreads())
-    
     ////////////////////
     // Fix generic leaks
-    
-    stopThreads();
     
     destroyThreadGroups();
     
@@ -414,174 +392,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     return new ClearingThreadLocalProcessor();
   }
 
-  /**
-   * Partially inspired by org.apache.catalina.loader.WebappClassLoader.clearReferencesThreads()
-   */
-  @SuppressWarnings("deprecation")
-  protected void stopThreads() {
-    final Class<?> workerClass = findClass("java.util.concurrent.ThreadPoolExecutor$Worker");
-    final Field oracleTarget = findField(Thread.class, "target"); // Sun/Oracle JRE
-    final Field ibmRunnable = findField(Thread.class, "runnable"); // IBM JRE
-    final Field inheritedAccessControlContext = findField(Thread.class, "inheritedAccessControlContext");
-
-    final boolean waitForThreads = threadWaitMs > 0;
-    for(Thread thread : classLoaderLeakPreventor.getAllThreads()) {
-      final Runnable runnable = (oracleTarget != null) ? 
-          (Runnable) getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
-          (Runnable) getFieldValue(ibmRunnable, thread);   // IBM JRE
-
-      final boolean runnableLoadedInWebApplication = isLoadedInWebApplication(runnable);
-      if(thread != Thread.currentThread() && // Ignore current thread
-         (isThreadInWebApplication(thread) || runnableLoadedInWebApplication)) {
-
-        if (thread.getClass().getName().startsWith(JURT_ASYNCHRONOUS_FINALIZER)) {
-          // Note, the thread group of this thread may be "system" if it is triggered by the Garbage Collector
-          // however if triggered by us in forceStartOpenOfficeJurtCleanup() it may depend on the application server
-          if(stopThreads) {
-            info("Found JURT thread " + thread.getName() + "; starting " + JURTKiller.class.getSimpleName());
-            new JURTKiller(thread).start();
-          }
-          else
-            warn("JURT thread " + thread.getName() + " is still running in web app");
-        }
-        else if(thread.getThreadGroup() != null && 
-           ("system".equals(thread.getThreadGroup().getName()) ||  // System thread
-            "RMI Runtime".equals(thread.getThreadGroup().getName()))) { // RMI thread (honestly, just copied from Tomcat)
-          
-          if("Keep-Alive-Timer".equals(thread.getName())) {
-            thread.setContextClassLoader(getWebApplicationClassLoader().getParent());
-            debug("Changed contextClassLoader of HTTP keep alive thread");
-          }
-        }
-        else if(thread.isAlive()) { // Non-system, running in web app
-        
-          if("java.util.TimerThread".equals(thread.getClass().getName())) {
-            if(stopTimerThreads) {
-              warn("Stopping Timer thread '" + thread.getName() + "' running in classloader.");
-              stopTimerThread(thread);
-            }
-            else {
-              info("Timer thread is running in classloader, but will not be stopped");
-            }
-          }
-          else {
-            // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
-            if(workerClass != null && workerClass.isInstance(runnable)) {
-              if(stopThreads) {
-                warn("Shutting down " + ThreadPoolExecutor.class.getName() + " running within the classloader.");
-                try {
-                  // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
-                  final Field workerExecutor = findField(workerClass, "this$0");
-                  final ThreadPoolExecutor executor = getFieldValue(workerExecutor, runnable);
-                  executor.shutdownNow();
-                }
-                catch (Exception ex) {
-                  error(ex);
-                }
-              }
-              else 
-                info(ThreadPoolExecutor.class.getName() + " running within the classloader will not be shut down.");
-            }
-
-            final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-
-            if(! isLoadedInWebApplication(thread) && ! runnableLoadedInWebApplication) { // Not loaded in web app - just running there
-              // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
-              if(waitForThreads) {
-                warn("Thread " + displayString + " running in web app; waiting " + threadWaitMs);
-                waitForThread(thread, threadWaitMs);
-              }
-              
-              if(thread.isAlive() && isWebAppClassLoaderOrChild(thread.getContextClassLoader())) {
-                warn("Thread " + displayString + (waitForThreads ? " still" : "") + 
-                    " running in web app; changing context classloader to system classloader");
-                thread.setContextClassLoader(ClassLoader.getSystemClassLoader());
-              }
-            }
-            else if(stopThreads) { // Loaded by web app
-              final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
-              warn("Stopping Thread " + displayString + " running in web app " + waitString);
-
-              waitForThread(thread, threadWaitMs);
-
-              // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
-              // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
-              if(thread.isAlive())
-                thread.stop();
-            }
-            else {
-              warn("Thread " + displayString + " is still running in web app");
-            }
-              
-          }
-        }
-      }
-      else { // Thread not running in web app - may have been started in contextInitialized() and need fixed ACC
-        if(inheritedAccessControlContext != null && java_security_AccessControlContext$combiner != null) {
-          final AccessControlContext accessControlContext = getFieldValue(inheritedAccessControlContext, thread);
-          classLoaderLeakPreventor.removeDomainCombiner(thread, accessControlContext);
-        }
-      }
-    }
-  }
-
-  protected void stopTimerThread(Thread thread) {
-    // Seems it is not possible to access Timer of TimerThread, so we need to mimic Timer.cancel()
-    /** 
-    try {
-      Timer timer = (Timer) findField(thread.getClass(), "this$0").get(thread); // This does not work!
-      warn("Cancelling Timer " + timer + " / TimeThread '" + thread + "'");
-      timer.cancel();
-    }
-    catch (IllegalAccessException iaex) {
-      error(iaex);
-    }
-    */
-
-    try {
-      final Field newTasksMayBeScheduled = findField(thread.getClass(), "newTasksMayBeScheduled");
-      final Object queue = findField(thread.getClass(), "queue").get(thread); // java.lang.TaskQueue
-      final Method clear = findMethod(queue.getClass(), "clear");
-      
-      // Do what java.util.Timer.cancel() does
-      //noinspection SynchronizationOnLocalVariableOrMethodParameter
-      synchronized (queue) {
-        newTasksMayBeScheduled.set(thread, Boolean.FALSE);
-        clear.invoke(queue);
-        queue.notify(); // "In case queue was already empty."
-      }
-      
-      // We shouldn't need to join() here, thread will finish soon enough
-    }
-    catch (Exception ex) {
-      error(ex);
-    }
-  }
-  
-  /**
-   * Make the provided Thread stop sleep(), wait() or join() and then give it the provided no of milliseconds to finish
-   * executing. 
-   * @param thread The thread to wake up and wait for
-   * @param waitMs The no of milliseconds to wait. If <= 0 this method does nothing.
-   */
-  protected void waitForThread(Thread thread, long waitMs) {
-    if(waitMs > 0) {
-      try {
-        thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
-      }
-      catch (SecurityException e) {
-        error(e);
-      }
-
-      try {
-        thread.join(waitMs); // Wait for thread to run
-      }
-      catch (InterruptedException e) {
-        // Do nothing
-      }
-    }
-  }
-
   /** Destroy any ThreadGroups that are loaded by the application classloader */
   public void destroyThreadGroups() {
     try {
@@ -651,36 +461,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   // Fix specific leaks
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  /** 
-   * The bug detailed at https://issues.apache.org/ooo/show_bug.cgi?id=122517 is quite tricky. This is a try to 
-   * avoid the issues by force starting the threads and it's job queue.
-   */
-  protected void forceStartOpenOfficeJurtCleanup() {
-    if(stopThreads) {
-      if(isLoadedByWebApplication(findClass(JURT_ASYNCHRONOUS_FINALIZER))) {
-        /* 
-          The com.sun.star.lib.util.AsynchronousFinalizer class was found and loaded, which means that in case the
-          static block that starts the daemon thread had not been started yet, it has been started now.
-          
-          Now let's force Garbage Collection, with the hopes of having the finalize()ers that put Jobs on the
-          AsynchronousFinalizer queue be executed. Then just leave it, and handle the rest in {@link #stopThreads}.
-          */
-        info("OpenOffice JURT AsynchronousFinalizer thread started - forcing garbage collection to invoke finalizers");
-        gc();
-      }
-    }
-    else {
-      // Check for class existence without loading class and thus executing static block
-      if(getWebApplicationClassLoader().getResource("com/sun/star/lib/util/AsynchronousFinalizer.class") != null) {
-        warn("OpenOffice JURT AsynchronousFinalizer thread will not be stopped if started, as stopThreads is false");
-        /* 
-         By forcing Garbage Collection, we'll hopefully start the thread now, in case it would have been started by
-         GC later, so that at least it will appear in the logs. 
-         */
-        gc();
-      }
-    }
-  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Utility methods
@@ -717,20 +497,11 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     return false;
   }
 
-  protected boolean isThreadInWebApplication(Thread thread) {
-    return isLoadedInWebApplication(thread) || // Custom Thread class in web app
-       isWebAppClassLoaderOrChild(thread.getContextClassLoader()); // Running in web application
-  }
-  
   protected <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {
     Field staticField = findField(clazz, fieldName);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
   }
 
-  protected <E> E getStaticFieldValue(String className, String fieldName) {
-    return (E) getStaticFieldValue(className, fieldName, false);
-  }
-  
   protected <E> E getStaticFieldValue(String className, String fieldName, boolean trySystemCL) {
     Field staticField = findFieldOfClass(className, fieldName, trySystemCL);
     return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
@@ -781,10 +552,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     }
   }
 
-  protected Method findMethod(Class<?> clazz, String methodName, Class... parameterTypes) {
-    return classLoaderLeakPreventor.findMethod(clazz, methodName, parameterTypes);
-  }
-  
   /** Is the JVM currently shutting down? */
   protected boolean isJvmShuttingDown() {
     try {
@@ -977,38 +744,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     }
     return defaultValue;
   }
-
-  /**
-   * Unlike <code>{@link System#gc()}</code> this method guarantees that garbage collection has been performed before
-   * returning.
-   */
-  protected static void gc() {
-    if (isDisableExplicitGCEnabled()) {
-      System.err.println(ClassLoaderLeakPreventorListener.class.getSimpleName() + ": "
-          + "Skipping GC call since -XX:+DisableExplicitGC is supplied as VM option.");
-      return;
-    }
-    
-    Object obj = new Object();
-    WeakReference<Object> ref = new WeakReference<Object>(obj);
-    //noinspection UnusedAssignment
-    obj = null;
-    while(ref.get() != null) {
-      System.gc();
-    }
-  }
-  
-  /**
-   * Check is "-XX:+DisableExplicitGC" enabled.
-   *
-   * @return true is "-XX:+DisableExplicitGC" is set als vm argument, false otherwise.
-   */
-  private static boolean isDisableExplicitGCEnabled() {
-    RuntimeMXBean bean = ManagementFactory.getRuntimeMXBean();
-    List<String> aList = bean.getInputArguments();
-
-    return aList.contains("-XX:+DisableExplicitGC");
-  }  
   
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Log methods
@@ -1071,62 +806,4 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  /** 
-   * Inner class with the sole task of killing JURT finalizer thread after it is done processing jobs. 
-   * We need to postpone the stopping of this thread, since more Jobs may in theory be add()ed when this web application
-   * instance is closing down and being garbage collected.
-   * See https://issues.apache.org/ooo/show_bug.cgi?id=122517
-   */
-  protected class JURTKiller extends Thread {
-    
-    private final Thread jurtThread;
-    
-    private final List<?> jurtQueue;
-
-    public JURTKiller(Thread jurtThread) {
-      super("JURTKiller");
-      this.jurtThread = jurtThread;
-      jurtQueue = getStaticFieldValue(JURT_ASYNCHRONOUS_FINALIZER, "queue");
-    }
-
-    @Override
-    public void run() {
-      if(jurtQueue == null || jurtThread == null) {
-        error(getName() + ": No queue or thread!?");
-        return;
-      }
-      if(! jurtThread.isAlive()) {
-        warn(getName() + ": " + jurtThread.getName() + " is already dead?");
-      }
-      
-      boolean queueIsEmpty = false;
-      while(! queueIsEmpty) {
-        try {
-          debug(getName() + " goes to sleep for " + THREAD_WAIT_MS_DEFAULT + " ms");
-          Thread.sleep(THREAD_WAIT_MS_DEFAULT);
-        }
-        catch (InterruptedException e) {
-          // Do nothing
-        }
-
-        if(State.RUNNABLE != jurtThread.getState()) { // Unless thread is currently executing a Job
-          debug(getName() + " about to force Garbage Collection");
-          gc(); // Force garbage collection, which may put new items on queue
-
-          synchronized (jurtQueue) {
-            queueIsEmpty = jurtQueue.isEmpty();
-            debug(getName() + ": JURT queue is empty? " + queueIsEmpty);
-          }
-        }
-        else 
-          debug(getName() + ": JURT thread " + jurtThread.getName() + " is executing Job");
-      }
-      
-      info(getName() + " about to kill " + jurtThread);
-      if(jurtThread.isAlive()) {
-        //noinspection deprecation
-        jurtThread.stop();
-      }
-    }
-  }
 }
