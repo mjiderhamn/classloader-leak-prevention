@@ -120,43 +120,6 @@ import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookClean
 @SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventorListener implements ServletContextListener {
 
-  /** Class name for per thread transaction in Caucho Resin transaction manager */
-  public static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
-
-  ///////////
-  // Settings
-  
-  
-  /** Should threads tied to the web app classloader be forced to stop at application shutdown? */
-  @Deprecated
-  protected boolean stopThreads = true;
-  
-  /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
-  @Deprecated
-  protected boolean stopTimerThreads = true;
-  
-  /** Should shutdown hooks registered from the application be executed at application shutdown? */
-  protected boolean executeShutdownHooks = true;
-
-  /** 
-   * Should the {@code oracle.jdbc.driver.OracleTimeoutPollingThread} thread be forced to start with system classloader,
-   * in case Oracle JDBC driver is present? This is normally a good idea, but can be disabled in case the Oracle JDBC
-   * driver is not used even though it is on the classpath.
-   */
-  protected boolean startOracleTimeoutThread = true;
-
-  /** 
-   * No of milliseconds to wait for threads to finish execution, before stopping them.
-   */
-  @Deprecated // TODO StopThreadsCleanUp only https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
-  protected int threadWaitMs = ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT;
-
-  /** 
-   * No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
-   * If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
-   */
-  protected int shutdownHookWaitMs = SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
-
   protected ClassLoaderLeakPreventor classLoaderLeakPreventor;
 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
@@ -182,12 +145,31 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   @Override
   public void contextInitialized(ServletContextEvent servletContextEvent) {
     final ServletContext servletContext = servletContextEvent.getServletContext();
-    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
-    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
-    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
-    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
-    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
-    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
+    
+    // Should threads tied to the web app classloader be forced to stop at application shutdown?
+    boolean stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
+    
+    // Should Timer threads tied to the web app classloader be forced to stop at application shutdown?
+    boolean stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
+    
+    // Should shutdown hooks registered from the application be executed at application shutdown?
+    boolean executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
+
+    /* 
+     * Should the {@code oracle.jdbc.driver.OracleTimeoutPollingThread} thread be forced to start with system classloader,
+     * in case Oracle JDBC driver is present? This is normally a good idea, but can be disabled in case the Oracle JDBC
+     * driver is not used even though it is on the classpath.
+     */
+    boolean startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
+    
+    // No of milliseconds to wait for threads to finish execution, before stopping them.
+    int threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
+
+    /* 
+     * No of milliseconds to wait for shutdown hooks to finish execution, before stopping them.
+     * If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
+     */
+    int shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
     
     info("Settings for " + this.getClass().getName() + " (CL: 0x" +
          Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
@@ -293,10 +275,10 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     ////////////////////
     // Fix generic leaks
     
-    
-
+    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
     unsetCachedKeepAliveTimer();
     
+    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
     try {
       try { // First try Java 1.6 method
         final Method clearCache16 = ResourceBundle.class.getMethod("clearCache", ClassLoader.class);
@@ -332,6 +314,8 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     
     // (CacheKey of java.util.ResourceBundle.NONEXISTENT_BUNDLE will point to first referring classloader...)
     
+
+    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
     // Release this classloader from Apache Commons Logging (ACL) by calling
     //   LogFactory.release(getCurrentClassLoader());
     // Use reflection in case ACL is not present.

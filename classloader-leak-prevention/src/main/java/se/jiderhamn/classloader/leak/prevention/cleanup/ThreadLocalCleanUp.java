@@ -6,7 +6,6 @@ import java.lang.reflect.Field;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
-import static se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorListener.CAUCHO_TRANSACTION_IMPL;
 import static sun.management.Agent.error;
 
 /**
@@ -16,6 +15,9 @@ import static sun.management.Agent.error;
  */
 public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
 
+  /** Class name for per thread transaction in Caucho Resin transaction manager */
+  private static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
+  
   protected Field java_lang_Thread_threadLocals;
 
   protected Field java_lang_Thread_inheritableThreadLocals;
