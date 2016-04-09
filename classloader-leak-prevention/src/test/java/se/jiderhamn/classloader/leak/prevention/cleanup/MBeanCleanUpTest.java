@@ -1,10 +1,8 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.management.ManagementFactory;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.MBeanCleanUp;
 
 /**
  * Test case for {@link MBeanCleanUp}

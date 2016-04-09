@@ -1,7 +1,6 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import org.geotools.util.WeakCollectionCleaner;
-import se.jiderhamn.classloader.leak.prevention.cleanup.GeoToolsCleanUp;
 
 /**
  * Test case for {@link GeoToolsCleanUp}

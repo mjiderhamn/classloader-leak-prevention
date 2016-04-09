@@ -1,7 +1,6 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import org.apache.cxf.transport.http.CXFAuthenticator;
-import se.jiderhamn.classloader.leak.prevention.cleanup.DefaultAuthenticatorCleanUp;
 
 /**
  * Test that the leak caused by CXF custom {@link java.net.Authenticator} is cleared.

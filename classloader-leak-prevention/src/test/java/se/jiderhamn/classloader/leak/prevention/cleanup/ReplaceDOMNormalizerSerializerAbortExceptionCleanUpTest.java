@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 import se.jiderhamn.classloader.leak.prevention.ReplaceDOMNormalizerSerializerAbortException;

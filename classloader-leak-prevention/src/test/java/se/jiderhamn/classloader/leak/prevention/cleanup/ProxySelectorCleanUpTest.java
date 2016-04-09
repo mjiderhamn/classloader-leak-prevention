@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.io.IOException;
 import java.net.Proxy;
@@ -6,8 +6,6 @@ import java.net.ProxySelector;
 import java.net.SocketAddress;
 import java.net.URI;
 import java.util.List;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.ProxySelectorCleanUp;
 
 /**
  * Test case for {@link ProxySelectorCleanUp}

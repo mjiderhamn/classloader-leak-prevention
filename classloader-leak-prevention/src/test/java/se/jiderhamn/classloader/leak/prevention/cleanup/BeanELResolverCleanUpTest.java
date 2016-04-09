@@ -1,9 +1,8 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import javax.el.*;
 
 import org.junit.Before;
-import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUp;
 
 /**
  * Test case for {@link BeanELResolverCleanUp}

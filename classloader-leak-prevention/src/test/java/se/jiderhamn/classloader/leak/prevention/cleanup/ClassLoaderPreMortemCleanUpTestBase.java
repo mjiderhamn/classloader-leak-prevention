@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;

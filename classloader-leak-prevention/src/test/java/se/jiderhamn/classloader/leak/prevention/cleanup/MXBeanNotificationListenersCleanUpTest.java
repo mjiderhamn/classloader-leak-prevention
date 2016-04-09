@@ -1,11 +1,9 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.management.ManagementFactory;
 import javax.management.Notification;
 import javax.management.NotificationEmitter;
 import javax.management.NotificationListener;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.MXBeanNotificationListenersCleanUp;
 
 /**
  * Test case for {@link MXBeanNotificationListenersCleanUp}

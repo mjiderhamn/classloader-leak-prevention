@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.reflect.Method;
 import javax.el.BeanELResolver;
@@ -7,7 +7,6 @@ import javax.faces.component.UIComponentBase;
 
 import com.sun.faces.el.ELContextImpl;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
-import se.jiderhamn.classloader.leak.prevention.cleanup.JavaServerFaces2746CleanUp;
 
 import static se.jiderhamn.classloader.leak.JUnitClassloaderRunner.forceGc;
 

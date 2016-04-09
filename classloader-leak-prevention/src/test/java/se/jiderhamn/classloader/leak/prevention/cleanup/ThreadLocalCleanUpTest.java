@@ -1,6 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.ThreadLocalCleanUp;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 /**
  * Test cases for {@link ThreadLocalCleanUp}

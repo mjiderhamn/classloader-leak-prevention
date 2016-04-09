@@ -1,4 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.io.File;
 import java.io.IOException;

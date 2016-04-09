@@ -1,9 +1,8 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.beans.PropertyEditorManager;
 
 import org.junit.Ignore;
-import se.jiderhamn.classloader.leak.prevention.cleanup.PropertyEditorCleanUp;
 
 /**
  * Test cases for {@link PropertyEditorCleanUp}

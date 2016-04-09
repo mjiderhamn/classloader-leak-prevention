@@ -1,8 +1,6 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.security.Provider;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.SecurityProviderCleanUp;
 
 /**
  * Test case for {@link SecurityProviderCleanUp}

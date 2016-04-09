@@ -1,10 +1,9 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
 
 import org.junit.Before;
-import se.jiderhamn.classloader.leak.prevention.cleanup.IIOServiceProviderCleanUp;
 
 /**
  * Test case for {@link IIOServiceProviderCleanUp}

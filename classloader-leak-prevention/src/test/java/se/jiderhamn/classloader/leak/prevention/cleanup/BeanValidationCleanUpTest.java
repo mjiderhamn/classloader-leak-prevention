@@ -1,9 +1,7 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import org.apache.axis.utils.XMLUtils;
 import org.junit.Ignore;
-import se.jiderhamn.classloader.leak.prevention.cleanup.BeanValidationCleanUp;
-import se.jiderhamn.classloader.leak.prevention.cleanup.ThreadLocalCleanUp;
 
 /**
  * Test case for {@link BeanValidationCleanUp}

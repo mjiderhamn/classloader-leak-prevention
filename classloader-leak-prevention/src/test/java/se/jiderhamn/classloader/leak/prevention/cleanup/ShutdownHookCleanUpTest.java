@@ -1,6 +1,4 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
-
-import se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookCleanUp;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 /**
  * Test case for {@link ShutdownHookCleanUp}
