@@ -50,7 +50,7 @@ public class StopThreadsCleanUp_TimerTest {
   
   private static class TimerThreadsCleanUp extends StopThreadsCleanUp {
     public TimerThreadsCleanUp() {
-      super(true);
+      super(true, true);
     }
 
     /** Change visibility */

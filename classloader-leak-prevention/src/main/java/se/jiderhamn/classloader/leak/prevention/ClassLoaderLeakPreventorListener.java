@@ -197,7 +197,31 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     catch(Exception e){
       error(e);
     }
+  }
 
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // Implement javax.servlet.ServletContextListener 
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  @Override
+  public void contextInitialized(ServletContextEvent servletContextEvent) {
+    final ServletContext servletContext = servletContextEvent.getServletContext();
+    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
+    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
+    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
+    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
+    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
+    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
+    
+    info("Settings for " + this.getClass().getName() + " (CL: 0x" +
+         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
+    info("  stopThreads = " + stopThreads);
+    info("  stopTimerThreads = " + stopTimerThreads);
+    info("  executeShutdownHooks = " + executeShutdownHooks);
+    info("  threadWaitMs = " + threadWaitMs + " ms");
+    info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
+    
+    info("Initializing context by loading some known offenders with system classloader");
+    
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
     
     // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 Move to factory
@@ -247,35 +271,10 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventorFactory.addCleanUp(new SecurityProviderCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new ProxySelectorCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new RmiTargetsCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new StopThreadsCleanUp(true, true
-        /* TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 */));
+    classLoaderLeakPreventorFactory.addCleanUp(new StopThreadsCleanUp(stopThreads, stopTimerThreads));
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory
         .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
-  }
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Implement javax.servlet.ServletContextListener 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  @Override
-  public void contextInitialized(ServletContextEvent servletContextEvent) {
-    final ServletContext servletContext = servletContextEvent.getServletContext();
-    stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
-    stopTimerThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopTimerThreads"));
-    executeShutdownHooks = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.executeShutdownHooks"));
-    startOracleTimeoutThread = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.startOracleTimeoutThread"));
-    threadWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.threadWaitMs", ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
-    shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
-    
-    info("Settings for " + this.getClass().getName() + " (CL: 0x" +
-         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
-    info("  stopThreads = " + stopThreads);
-    info("  stopTimerThreads = " + stopTimerThreads);
-    info("  executeShutdownHooks = " + executeShutdownHooks);
-    info("  threadWaitMs = " + threadWaitMs + " ms");
-    info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
-    
-    info("Initializing context by loading some known offenders with system classloader");
 
     classLoaderLeakPreventor.runPreClassLoaderInitiators();
 
