@@ -1,6 +1,9 @@
 package se.jiderhamn.classloader.leak.prevention.cleaup;
 
+import org.apache.axis.utils.XMLUtils;
+import org.junit.Ignore;
 import se.jiderhamn.classloader.leak.prevention.cleanup.BeanValidationCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.ThreadLocalCleanUp;
 
 /**
  * Test case for {@link BeanValidationCleanUp}
@@ -13,4 +16,18 @@ public class BeanValidationCleanUpTest extends ClassLoaderPreMortemCleanUpTestBa
     javax.validation.Validation.buildDefaultValidatorFactory();    
   }
 
+  /**
+   * Test case that {@link ThreadLocalCleanUp} fixes leak caused by Axis 1.4
+   * @author Mattias Jiderhamn
+   */
+  @Ignore // Fixed in newer versions of Java???
+  public static class ThreadLocalCleanUp_ApacheAxis14Test extends ClassLoaderPreMortemCleanUpTestBase<ThreadLocalCleanUp> {
+  
+    @Override
+    protected void triggerLeak() throws Exception {
+      // Trigger leak of Axis 1.4
+      XMLUtils.getDocumentBuilder();
+    }
+  
+  }
 }
