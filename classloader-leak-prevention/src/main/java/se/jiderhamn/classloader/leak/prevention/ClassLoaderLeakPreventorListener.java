@@ -15,10 +15,8 @@
  */
 package se.jiderhamn.classloader.leak.prevention;
 
-import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.*;
+import java.util.LinkedList;
+import java.util.List;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
@@ -135,7 +133,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
       // Ignore silently - Spring not present on classpath
     }
     catch(Exception e){
-      error(e);
+      e.printStackTrace(System.err);
     }
   }
 
@@ -170,9 +168,10 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
      * If set to -1 there will be no waiting at all, but Thread is allowed to run until finished.
      */
     int shutdownHookWaitMs = getIntInitParameter(servletContext, "ClassLoaderLeakPreventor.shutdownHookWaitMs", SHUTDOWN_HOOK_WAIT_MS_DEFAULT);
-    
+
+    final ClassLoader webAppClassLoader = Thread.currentThread().getContextClassLoader();
     info("Settings for " + this.getClass().getName() + " (CL: 0x" +
-         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + "):");
+         Integer.toHexString(System.identityHashCode(webAppClassLoader)) + "):");
     info("  stopThreads = " + stopThreads);
     info("  stopTimerThreads = " + stopTimerThreads);
     info("  executeShutdownHooks = " + executeShutdownHooks);
@@ -232,10 +231,12 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventorFactory.addCleanUp(new RmiTargetsCleanUp());
     classLoaderLeakPreventorFactory.addCleanUp(new StopThreadsCleanUp(stopThreads, stopTimerThreads));
     classLoaderLeakPreventorFactory.addCleanUp(new ThreadGroupCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new ThreadLocalCleanUp()); // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads 
+    classLoaderLeakPreventorFactory.addCleanUp(new ThreadLocalCleanUp()); // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads
+    classLoaderLeakPreventorFactory.addCleanUp(new KeepAliveTimerCacheCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new ResourceBundleCleanUp());
+    classLoaderLeakPreventorFactory.addCleanUp(new ApacheCommonsLoggingCleanUp()); // Do this last, in case other shutdown procedures want to log something.
 
-    classLoaderLeakPreventor = classLoaderLeakPreventorFactory
-        .newLeakPreventor(ClassLoaderLeakPreventorListener.class.getClassLoader());
+    classLoaderLeakPreventor = classLoaderLeakPreventorFactory.newLeakPreventor(webAppClassLoader);
 
     classLoaderLeakPreventor.runPreClassLoaderInitiators();
 
@@ -244,7 +245,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
         listener.contextInitialized(servletContextEvent);
       }
       catch(Exception e){
-        error(e);
+        classLoaderLeakPreventor.error(e);
       }
     }
   }
@@ -252,200 +253,25 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   @Override
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
 
-    final boolean jvmIsShuttingDown = isJvmShuttingDown();
-    if(jvmIsShuttingDown) {
-      info("JVM is shutting down - skip cleanup");
-      return; // Don't do anything more
-    }
-
     info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" + 
-         Integer.toHexString(System.identityHashCode(getWebApplicationClassLoader())) + ")");
+         Integer.toHexString(System.identityHashCode(classLoaderLeakPreventor.getClassLoader())) + ")");
 
     for(ServletContextListener listener : otherListeners) {
       try {
         listener.contextDestroyed(servletContextEvent);
       }
       catch(Exception e) {
-        error(e);
+        classLoaderLeakPreventor.error(e);
       }
     }
     
     classLoaderLeakPreventor.runCleanUps();
-
-    ////////////////////
-    // Fix generic leaks
-    
-    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
-    unsetCachedKeepAliveTimer();
-    
-    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
-    try {
-      try { // First try Java 1.6 method
-        final Method clearCache16 = ResourceBundle.class.getMethod("clearCache", ClassLoader.class);
-        debug("Since Java 1.6+ is used, we can call " + clearCache16);
-        clearCache16.invoke(null, getWebApplicationClassLoader());
-      }
-      catch (NoSuchMethodException e) {
-        // Not Java 1.6+, we have to clear manually
-        final Map<?,?> cacheList = getStaticFieldValue(ResourceBundle.class, "cacheList"); // Java 5: SoftCache extends AbstractMap
-        final Iterator<?> iter = cacheList.keySet().iterator();
-        Field loaderRefField = null;
-        while(iter.hasNext()) {
-          Object key = iter.next(); // CacheKey
-          
-          if(loaderRefField == null) { // First time
-            loaderRefField = key.getClass().getDeclaredField("loaderRef");
-            loaderRefField.setAccessible(true);
-          }
-          WeakReference<ClassLoader> loaderRef = (WeakReference<ClassLoader>) loaderRefField.get(key); // LoaderReference extends WeakReference
-          ClassLoader classLoader = loaderRef.get();
-          
-          if(isWebAppClassLoaderOrChild(classLoader)) {
-            info("Removing ResourceBundle from cache: " + key);
-            iter.remove();
-          }
-          
-        }
-      }
-    }
-    catch(Exception ex) {
-      error(ex);
-    }
-    
-    // (CacheKey of java.util.ResourceBundle.NONEXISTENT_BUNDLE will point to first referring classloader...)
-    
-
-    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
-    // Release this classloader from Apache Commons Logging (ACL) by calling
-    //   LogFactory.release(getCurrentClassLoader());
-    // Use reflection in case ACL is not present.
-    // Do this last, in case other shutdown procedures want to log something.
-    
-    final Class<?> logFactory = findClass("org.apache.commons.logging.LogFactory");
-    if(logFactory != null) { // Apache Commons Logging present
-      info("Releasing web app classloader from Apache Commons Logging");
-      try {
-        logFactory.getMethod("release", java.lang.ClassLoader.class)
-            .invoke(null, getWebApplicationClassLoader());
-      }
-      catch (Exception ex) {
-        error(ex);
-      }
-    }
-    
-  }
-
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // Fix generic leaks
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  /** 
-   * Since Keep-Alive-Timer thread may have terminated, but still be referenced, we need to make sure it does not
-   * reference this classloader.
-   */
-  protected void unsetCachedKeepAliveTimer() {
-    Object keepAliveCache = getStaticFieldValue("sun.net.www.http.HttpClient", "kac", true);
-    if(keepAliveCache != null) {
-      final Thread keepAliveTimer = getFieldValue(keepAliveCache, "keepAliveTimer");
-      if(keepAliveTimer != null) {
-        if(isWebAppClassLoaderOrChild(keepAliveTimer.getContextClassLoader())) {
-          keepAliveTimer.setContextClassLoader(getWebApplicationClassLoader().getParent());
-          error("ContextClassLoader of sun.net.www.http.HttpClient cached Keep-Alive-Timer set to parent instead");
-        }
-      }
-    }
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
-  protected ClassLoader getWebApplicationClassLoader() {
-    return ClassLoaderLeakPreventorListener.class.getClassLoader();
-    // Alternative return Thread.currentThread().getContextClassLoader();
-  }
-
-  /** Test if provided ClassLoader is the classloader of the web application, or a child thereof */
-  protected boolean isWebAppClassLoaderOrChild(ClassLoader cl) {
-    final ClassLoader webAppCL = getWebApplicationClassLoader();
-    // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
-
-    while(cl != null) {
-      if(cl == webAppCL)
-        return true;
-      
-      cl = cl.getParent();
-    }
-
-    return false;
-  }
-
-  protected <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {
-    Field staticField = findField(clazz, fieldName);
-    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
-  }
-
-  protected <E> E getStaticFieldValue(String className, String fieldName, boolean trySystemCL) {
-    Field staticField = findFieldOfClass(className, fieldName, trySystemCL);
-    return (staticField != null) ? (E) getStaticFieldValue(staticField) : null;
-  }
-
-  protected Field findFieldOfClass(String className, String fieldName, boolean trySystemCL) {
-    Class<?> clazz = findClass(className, trySystemCL);
-    if(clazz != null) {
-      return findField(clazz, fieldName);
-    }
-    else
-      return null;
-  }
-  
-  protected Class<?> findClass(String className) {
-    return findClass(className, false);
-  }
-  
-  protected Class<?> findClass(String className, boolean trySystemCL) {
-    return classLoaderLeakPreventor.findClass(className, trySystemCL);
-  }
-  
-  protected Field findField(Class<?> clazz, String fieldName) {
-    return classLoaderLeakPreventor.findField(clazz, fieldName);
-  }
-  
-  protected <T> T getStaticFieldValue(Field field) {
-    return classLoaderLeakPreventor.getStaticFieldValue(field);
-  }
-  
-  protected <T> T getFieldValue(Object obj, String fieldName) {
-    final Field field = findField(obj.getClass(), fieldName);
-    return (T) getFieldValue(field, obj);
-  }
-  
-  protected <T> T getFieldValue(Field field, Object obj) {
-    try {
-      return (T) field.get(obj);
-    }
-    catch (Exception ex) {
-      warn(ex);
-      // Silently ignore
-      return null;
-    }
-  }
-
-  /** Is the JVM currently shutting down? */
-  protected boolean isJvmShuttingDown() {
-    try {
-      final Thread dummy = new Thread(); // Will never be started
-      Runtime.getRuntime().removeShutdownHook(dummy);
-      return false;
-    }
-    catch (IllegalStateException isex) {
-      return true; // Shutting down
-    }
-    catch (Throwable t) { // Any other Exception, assume we are not shutting down
-      return false;
-    }
-  }
-
   /** Parse init parameter for integer value, returning default if not found or invalid */
   protected static int getIntInitParameter(ServletContext servletContext, String parameterName, int defaultValue) {
     final String parameterString = servletContext.getInitParameter(parameterName);
@@ -472,53 +298,12 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   protected String getLogPrefix() {
     return ClassLoaderLeakPreventorListener.class.getSimpleName() + ": ";
   }
-  
-  /**
-   * To "turn off" debug logging override this method in a subclass and make that subclass method empty.
-   */
-  protected void debug(String s) {
-    System.out.println(getLogPrefix() + s);
-  } 
 
   /**
    * To "turn off" info logging override this method in a subclass and make that subclass method empty.
    */
   protected void info(String s) {
     System.out.println(getLogPrefix() + s);
-  } 
-
-  /**
-   * To "turn off" warn logging override this method in a subclass and make that subclass method empty.
-   * Also turn off {@link #warn(Throwable)}.
-   */
-  protected void warn(String s) {
-    System.err.println(getLogPrefix() + s);
-  } 
-
-  /**
-   * To "turn off" warn logging override this method in a subclass and make that subclass method empty.
-   * Also turn off {@link #warn(String)}.
-   */
-  protected void warn(Throwable t) {
-    t.printStackTrace(System.err);
-  } 
-
-  /**
-   * To "turn off" error logging override this method in a subclass and make that subclass method empty.
-   * Also turn off {@link #error(Throwable)}.
-   */
-  protected void error(String s) {
-    System.err.println(getLogPrefix() + s);
-  } 
-
-  /**
-   * To "turn off" error logging override this method in a subclass and make that subclass method empty.
-   * Also turn off {@link #error(String)}.
-   */
-  protected void error(Throwable t) {
-    t.printStackTrace(System.err);
   }
-  
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
+
 }

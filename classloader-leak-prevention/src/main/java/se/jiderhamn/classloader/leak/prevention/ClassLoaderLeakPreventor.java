@@ -188,8 +188,14 @@ public class ClassLoaderLeakPreventor {
   
   /** Invoke all the registered {@link ClassLoaderPreMortemCleanUp}s */
   public void runCleanUps() {
-    for(ClassLoaderPreMortemCleanUp cleanUp : cleanUps) {
-      cleanUp.cleanUp(this);
+    if(isJvmShuttingDown()) {
+      info("JVM is shutting down - skip cleanup");
+      // Don't do anything more
+    }
+    else {
+      for(ClassLoaderPreMortemCleanUp cleanUp : cleanUps) {
+        cleanUp.cleanUp(this);
+      }
     }
   }
   
@@ -511,6 +517,21 @@ public class ClassLoaderLeakPreventor {
 
     return aList.contains("-XX:+DisableExplicitGC");
   }  
+
+  /** Is the JVM currently shutting down? */
+  public boolean isJvmShuttingDown() {
+    try {
+      final Thread dummy = new Thread(); // Will never be started
+      Runtime.getRuntime().removeShutdownHook(dummy);
+      return false;
+    }
+    catch (IllegalStateException isex) {
+      return true; // Shutting down
+    }
+    catch (Throwable t) { // Any other Exception, assume we are not shutting down
+      return false;
+    }
+  }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Delegate methods for Logger
