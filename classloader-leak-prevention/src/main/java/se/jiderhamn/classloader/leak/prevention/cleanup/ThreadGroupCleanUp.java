@@ -1,5 +1,7 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.lang.reflect.Method;
+
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
@@ -54,6 +56,17 @@ public class ThreadGroupCleanUp implements ClassLoaderPreMortemCleanUp {
     catch (Exception ex) {
       preventor.error(ex);
     }
-    
+
+    try {
+      final Object contexts = preventor.getStaticFieldValue("java.beans.ThreadGroupContext", "contexts");
+      if(contexts != null) { // Since Java 1.7
+        final Method removeStaleEntries = preventor.findMethod("java.beans.WeakIdentityMap", "removeStaleEntries");
+        if(removeStaleEntries != null)
+          removeStaleEntries.invoke(contexts);
+      }
+    }
+    catch (Throwable t) { // IllegalAccessException, InvocationTargetException 
+      preventor.warn(t);
+    }
   }
 }

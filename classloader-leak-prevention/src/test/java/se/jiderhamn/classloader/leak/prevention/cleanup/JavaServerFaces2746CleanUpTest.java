@@ -1,12 +1,10 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
-import java.lang.reflect.Method;
 import javax.el.BeanELResolver;
 import javax.el.ELContext;
 import javax.faces.component.UIComponentBase;
 
 import com.sun.faces.el.ELContextImpl;
-import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 import static se.jiderhamn.classloader.leak.JUnitClassloaderRunner.forceGc;
 
@@ -72,14 +70,7 @@ public class JavaServerFaces2746CleanUpTest extends ClassLoaderPreMortemCleanUpT
 
     forceGc(3);
 
-    // TODO Do this in ThreadGroup cleanup and call from here https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
-    final ClassLoaderLeakPreventor preventor = getClassLoaderLeakPreventor();
-    final Object contexts = preventor.getStaticFieldValue("java.beans.ThreadGroupContext", "contexts");
-    if(contexts != null) { // Since Java 1.7
-      final Method removeStaleEntries = preventor.findMethod("java.beans.WeakIdentityMap", "removeStaleEntries");
-      if(removeStaleEntries != null)
-        removeStaleEntries.invoke(contexts);
-    }
+    new ThreadGroupCleanUp().cleanUp(getClassLoaderLeakPreventor());
   }
   
   /** Invoke {@link Runnable} in a dumme {@link ThreadGroup} that after this method returns is ready for GC */

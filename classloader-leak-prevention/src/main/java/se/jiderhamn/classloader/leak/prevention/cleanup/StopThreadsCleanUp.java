@@ -28,7 +28,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
    */
   protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
   
-  /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? TODO Set https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 */
+  /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
   protected final boolean stopTimerThreads;
                    
   public StopThreadsCleanUp(boolean stopThreads, boolean stopTimerThreads) {
@@ -228,8 +228,6 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
    * We need to postpone the stopping of this thread, since more Jobs may in theory be add()ed when this web application
    * instance is closing down and being garbage collected.
    * See https://issues.apache.org/ooo/show_bug.cgi?id=122517
-   * 
-   * TODO Extract feature to separate class? Add option? https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
    */
   protected class JURTKiller extends Thread {
     
