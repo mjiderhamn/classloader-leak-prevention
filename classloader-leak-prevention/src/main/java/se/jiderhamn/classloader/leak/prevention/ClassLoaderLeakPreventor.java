@@ -26,7 +26,7 @@ public class ClassLoaderLeakPreventor {
 
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
   
-  /* TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 private */ public final Field java_security_AccessControlContext$combiner;
+  private final Field java_security_AccessControlContext$combiner;
   
   private final Field java_security_AccessControlContext$parent;
   
@@ -84,11 +84,10 @@ public class ClassLoaderLeakPreventor {
   /**
    * Perform action in the provided ClassLoader (normally system ClassLoader, that may retain references to the 
    * {@link Thread#contextClassLoader}. 
-   * The method is package protected so that it can be called from test cases. TODO Still needed?
    * The motive for the custom {@link AccessControlContext} is to avoid spawned threads from inheriting all the 
    * {@link java.security.ProtectionDomain}s of the running code, since that may include the classloader we want to 
    * avoid leaking. This however means the {@link AccessControlContext} will have a {@link DomainCombiner} referencing the 
-   * classloader, which will be taken care of in {@link #stopThreads()} TODO!!!.
+   * classloader, which will be taken care of in {@link #runCleanUps()}.
    */
    protected void doInLeakSafeClassLoader(final Runnable runnable) {
      final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
@@ -161,10 +160,9 @@ public class ClassLoaderLeakPreventor {
   /** 
    * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
    * and any parents or privilegedContext thereof.
-   * TODO: Consider extracting to {@link ClassLoaderPreMortemCleanUp}
    */
-  public void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
-    if(accessControlContext != null) {
+  protected void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
+    if(accessControlContext != null && java_security_AccessControlContext$combiner != null) {
       if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
         warn(AccessControlContext.class.getSimpleName() + " of thread " + thread + " used custom combiner - unsetting");
         try {
@@ -193,6 +191,15 @@ public class ClassLoaderLeakPreventor {
       // Don't do anything more
     }
     else {
+      final Field inheritedAccessControlContext = this.findField(Thread.class, "inheritedAccessControlContext");
+      if(inheritedAccessControlContext != null) {
+        // Check if threads have been started in doInLeakSafeClassLoader() and need fixed ACC
+        for(Thread thread : getAllThreads()) { // (We actually only need to do this for threads not running in web app, as per StopThreadsCleanUp) 
+          final AccessControlContext accessControlContext = getFieldValue(inheritedAccessControlContext, thread);
+          removeDomainCombiner(thread, accessControlContext);
+        }
+      }
+      
       for(ClassLoaderPreMortemCleanUp cleanUp : cleanUps) {
         cleanUp.cleanUp(this);
       }

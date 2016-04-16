@@ -2,7 +2,6 @@ package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.security.AccessControlContext;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -85,7 +84,6 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
     final Class<?> workerClass = preventor.findClass("java.util.concurrent.ThreadPoolExecutor$Worker");
     final Field oracleTarget = preventor.findField(Thread.class, "target"); // Sun/Oracle JRE
     final Field ibmRunnable = preventor.findField(Thread.class, "runnable"); // IBM JRE
-    final Field inheritedAccessControlContext = preventor.findField(Thread.class, "inheritedAccessControlContext");
 
     final boolean waitForThreads = threadWaitMs > 0;
     for(Thread thread : preventor.getAllThreads()) {
@@ -179,12 +177,6 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
             }
               
           }
-        }
-      }
-      else { // Thread not running in web app - may have been started in contextInitialized() and need fixed ACC
-        if(inheritedAccessControlContext != null && preventor.java_security_AccessControlContext$combiner != null) {
-          final AccessControlContext accessControlContext = preventor.getFieldValue(inheritedAccessControlContext, thread);
-          preventor.removeDomainCombiner(thread, accessControlContext);
         }
       }
     }
