@@ -9,10 +9,13 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 import static sun.management.Agent.error;
 
 /**
- * TODO This must be done after threads have been stopped, or new ThreadLocals may be added by those threads 
- * TODO Allow deciding order of cleanups https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
+ * Clear {@link ThreadLocal}s for which {@link ThreadLocal#remove()} has not been called, in case either the 
+ * {@link ThreadLocal} is a custom one (subclassed in the protected ClassLoader), or the value is loaded by (or is)
+ * the protected ClassLoader.
+ * TODO This must be done after threads have been stopped, or new ThreadLocals may be added by those threads https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
  * @author Mattias Jiderhamn
  */
+@SuppressWarnings("WeakerAccess")
 public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
 
   /** Class name for per thread transaction in Caucho Resin transaction manager */
@@ -28,11 +31,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
 
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
-    // TODO Avoid re-init https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 
-    // Initialize some reflection variables
-    java_lang_Thread_threadLocals = preventor.findField(Thread.class, "threadLocals");
-    java_lang_Thread_inheritableThreadLocals = preventor.findField(Thread.class, "inheritableThreadLocals");
-    java_lang_ThreadLocal$ThreadLocalMap_table = preventor.findFieldOfClass("java.lang.ThreadLocal$ThreadLocalMap", "table");
+    initFields(preventor); // Initialize some reflection variables
     
     if(java_lang_Thread_threadLocals == null)
       preventor.error("java.lang.Thread.threadLocals not found; something is seriously wrong!");
@@ -44,37 +43,28 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
       preventor.error("java.lang.ThreadLocal$ThreadLocalMap.table not found; something is seriously wrong!");
 
 
-    final ThreadLocalProcessor clearingThreadLocalProcessor = getThreadLocalProcessor(preventor);
     for(Thread thread : preventor.getAllThreads()) {
-      forEachThreadLocalInThread(preventor, thread, clearingThreadLocalProcessor);
+      forEachThreadLocalInThread(preventor, thread);
     }
   }
 
-  /** Get {@link ThreadLocalProcessor} to be used. Override to customize {@link ThreadLocal} processing. */
-  protected ThreadLocalProcessor getThreadLocalProcessor(ClassLoaderLeakPreventor preventor) {
-    return new ClearingThreadLocalProcessor(preventor);
+  /** Make sure fields are initialized */
+  private void initFields(ClassLoaderLeakPreventor preventor) {
+    if(java_lang_Thread_threadLocals == null) { // First invokation of this preventor
+      java_lang_Thread_threadLocals = preventor.findField(Thread.class, "threadLocals");
+      java_lang_Thread_inheritableThreadLocals = preventor.findField(Thread.class, "inheritableThreadLocals");
+      java_lang_ThreadLocal$ThreadLocalMap_table = preventor.findFieldOfClass("java.lang.ThreadLocal$ThreadLocalMap", "table");
+    }
   }
 
-  /**
-   * Loop ThreadLocals and inheritable ThreadLocals in current Thread
-   * and for each found, invoke the callback interface
-   */
-  protected void forEachThreadLocalInCurrentThread(ClassLoaderLeakPreventor preventor, 
-                                                   ThreadLocalProcessor threadLocalProcessor) {
-    final Thread thread = Thread.currentThread();
-
-    forEachThreadLocalInThread(preventor, thread, threadLocalProcessor);
-  }
-
-  protected void forEachThreadLocalInThread(ClassLoaderLeakPreventor preventor,
-                                            Thread thread, ThreadLocalProcessor threadLocalProcessor) {
+  protected void forEachThreadLocalInThread(ClassLoaderLeakPreventor preventor, Thread thread) {
     try {
       if(java_lang_Thread_threadLocals != null) {
-        processThreadLocalMap(preventor, thread, threadLocalProcessor, java_lang_Thread_threadLocals.get(thread));
+        processThreadLocalMap(preventor, thread, java_lang_Thread_threadLocals.get(thread));
       }
 
       if(java_lang_Thread_inheritableThreadLocals != null) {
-        processThreadLocalMap(preventor, thread, threadLocalProcessor, java_lang_Thread_inheritableThreadLocals.get(thread));
+        processThreadLocalMap(preventor, thread, java_lang_Thread_inheritableThreadLocals.get(thread));
       }
     }
     catch (/*IllegalAccess*/Exception ex) {
@@ -83,7 +73,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
   }
 
   protected void processThreadLocalMap(ClassLoaderLeakPreventor preventor,
-                                       Thread thread, ThreadLocalProcessor threadLocalProcessor, Object threadLocalMap) throws IllegalAccessException {
+                                       Thread thread, Object threadLocalMap) throws IllegalAccessException {
     if(threadLocalMap != null && java_lang_ThreadLocal$ThreadLocalMap_table != null) {
       Field resin_suspendState = null;
       Field resin_isSuspended = null;
@@ -97,9 +87,9 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
           if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
             java_lang_ThreadLocal$ThreadLocalMap$Entry_value = preventor.findField(entry.getClass(), "value");
           }
-          
+
           final Object value = java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry);
-          
+
           // Workaround for http://bugs.caucho.com/view.php?id=5647
           if(value != null && CAUCHO_TRANSACTION_IMPL.equals(value.getClass().getName())) { // Resin transaction
             if(resin_suspendState == null && resin_isSuspended == null) { // First thread with Resin transaction, look up fields
@@ -116,10 +106,10 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
                   thread.suspend(); // Suspend the thread
                   if(preventor.getFieldValue(resin_suspendState, value) != null) { // Re-read suspend state when thread is suspended
                     final Object isSuspended = preventor.getFieldValue(resin_isSuspended, value);
-                    if(! (isSuspended instanceof Boolean)) {
+                    if(!(isSuspended instanceof Boolean)) {
                       preventor.error(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " but _isSuspended is not boolean: " + isSuspended);
                     }
-                    else if((Boolean)isSuspended) { // Is currently suspended - suspend state is correct
+                    else if((Boolean) isSuspended) { // Is currently suspended - suspend state is correct
                       preventor.debug(thread.toString() + " has " + CAUCHO_TRANSACTION_IMPL + " that is suspended");
                     }
                     else { // Is not suspended, and thus should not have suspend state
@@ -139,99 +129,67 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
             }
           }
 
-          threadLocalProcessor.process(thread, reference, threadLocal, value);
-        }
-      }
-    }
-  }
+          final boolean customThreadLocal = preventor.isLoadedInClassLoader(threadLocal); // This is not an actual problem
+          final boolean valueLoadedInWebApp = preventor.isLoadedInClassLoader(value);
+          if(customThreadLocal || valueLoadedInWebApp ||
+              (value instanceof ClassLoader && preventor.isClassLoaderOrChild((ClassLoader) value))) { // The value is classloader (child) itself
+            // This ThreadLocal is either itself loaded by the web app classloader, or it's value is
+            // Let's do something about it
 
-  /** TODO Create hieararchy of {@link ThreadLocalCleanUp} instead @Deprecated https://github.com/mjiderhamn/classloader-leak-prevention/issues/44*/
-  protected interface ThreadLocalProcessor {
-    void process(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value);
-  }
+            StringBuilder message = new StringBuilder();
+            if(threadLocal != null) {
+              if(customThreadLocal) {
+                message.append("Custom ");
+              }
+              message.append("ThreadLocal of type ").append(threadLocal.getClass().getName()).append(": ").append(threadLocal);
+            }
+            else {
+              message.append("Unknown ThreadLocal");
+            }
+            message.append(" with value ").append(value);
+            if(value != null) {
+              message.append(" of type ").append(value.getClass().getName());
+              if(valueLoadedInWebApp)
+                message.append(" that is loaded by web app");
+            }
 
-  /** ThreadLocalProcessor that detects and warns about potential leaks */
-  protected class WarningThreadLocalProcessor implements ThreadLocalProcessor {
-    
-    protected final ClassLoaderLeakPreventor preventor;
 
-    public WarningThreadLocalProcessor(ClassLoaderLeakPreventor preventor) {
-      this.preventor = preventor;
-    }
-
-    @Override
-    public final void process(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value) {
-      final boolean customThreadLocal = preventor.isLoadedInClassLoader(threadLocal); // This is not an actual problem
-      final boolean valueLoadedInWebApp = preventor.isLoadedInClassLoader(value);
-      if(customThreadLocal || valueLoadedInWebApp ||
-         (value instanceof ClassLoader && preventor.isClassLoaderOrChild((ClassLoader) value))) { // The value is classloader (child) itself
-        // This ThreadLocal is either itself loaded by the web app classloader, or it's value is
-        // Let's do something about it
-        
-        StringBuilder message = new StringBuilder();
-        if(threadLocal != null) {
-          if(customThreadLocal) {
-            message.append("Custom ");
+            // Process the detected potential leak
+            processLeak(preventor, thread, reference, threadLocal, value, message.toString());
           }
-          message.append("ThreadLocal of type ").append(threadLocal.getClass().getName()).append(": ").append(threadLocal);
         }
-        else {
-          message.append("Unknown ThreadLocal");
-        }
-        message.append(" with value ").append(value);
-        if(value != null) {
-          message.append(" of type ").append(value.getClass().getName());
-          if(valueLoadedInWebApp)
-            message.append(" that is loaded by web app");
-        }
-
-        
-        // Process the detected potential leak
-        processLeak(thread, entry, threadLocal, value, message.toString());
       }
     }
-    
-    /**
-     * After having detected potential ThreadLocal leak, this method is called. Default implementation only issues
-     * a warning. Subclasses may override this method to perform further processing, such as clean up. 
-     */
-    protected void processLeak(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value, String message) {
-      preventor.warn(message);
-    } 
   }
-  
-  /** ThreadLocalProcessor that not only detects and warns about potential leaks, but also tries to clear them */
-  protected class ClearingThreadLocalProcessor extends WarningThreadLocalProcessor {
-    
-    public ClearingThreadLocalProcessor(ClassLoaderLeakPreventor preventor) {
-      super(preventor);
+
+  /**
+   * After having detected potential ThreadLocal leak, this method is called.
+   * Default implementation tries to clear the entry to avoid a leak.
+   */
+  protected void processLeak(ClassLoaderLeakPreventor preventor, Thread thread, Reference<?> entry,
+                             ThreadLocal<?> threadLocal, Object value, String message) {
+    if(threadLocal != null && thread == Thread.currentThread()) { // If running for current thread and we have the ThreadLocal ...
+      // ... remove properly
+      preventor.info(message + " will be remove()d from " + thread);
+      threadLocal.remove();
+    }
+    else { // We cannot remove entry properly, so just make it stale
+      preventor.info(message + " will be made stale for later expunging from " + thread);
     }
 
-    @Override
-    protected void processLeak(Thread thread, Reference<?> entry, ThreadLocal<?> threadLocal, Object value, String message) {
-      if(threadLocal != null && thread == Thread.currentThread()) { // If running for current thread and we have the ThreadLocal ...
-        // ... remove properly
-        preventor.info(message + " will be remove()d from " + thread);
-        threadLocal.remove();
-      }
-      else { // We cannot remove entry properly, so just make it stale
-        preventor.info(message + " will be made stale for later expunging from " + thread);
-      }
+    // It seems like remove() doesn't really do the job, so play it safe and remove references from entry either way
+    // (Example problem org.infinispan.context.SingleKeyNonTxInvocationContext) 
+    entry.clear(); // Clear the key
 
-      // It seems like remove() doesn't really do the job, so play it safe and remove references from entry either way
-      // (Example problem org.infinispan.context.SingleKeyNonTxInvocationContext) 
-      entry.clear(); // Clear the key
+    if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
+      java_lang_ThreadLocal$ThreadLocalMap$Entry_value = preventor.findField(entry.getClass(), "value");
+    }
 
-      if(java_lang_ThreadLocal$ThreadLocalMap$Entry_value == null) {
-        java_lang_ThreadLocal$ThreadLocalMap$Entry_value = preventor.findField(entry.getClass(), "value");
-      }
-
-      try {
-        java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
-      }
-      catch (IllegalAccessException iaex) {
-        error(iaex);
-      }
+    try {
+      java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
+    }
+    catch (IllegalAccessException iaex) {
+      error(iaex);
     }
   }
 }
