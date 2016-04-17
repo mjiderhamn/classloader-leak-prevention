@@ -5,6 +5,7 @@ import java.lang.reflect.Field;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
+import se.jiderhamn.classloader.leak.prevention.MustBeAfter;
 
 import static sun.management.Agent.error;
 
@@ -12,11 +13,11 @@ import static sun.management.Agent.error;
  * Clear {@link ThreadLocal}s for which {@link ThreadLocal#remove()} has not been called, in case either the 
  * {@link ThreadLocal} is a custom one (subclassed in the protected ClassLoader), or the value is loaded by (or is)
  * the protected ClassLoader.
- * TODO This must be done after threads have been stopped, or new ThreadLocals may be added by those threads https://github.com/mjiderhamn/classloader-leak-prevention/issues/44
+ * This must be done after threads have been stopped, or new ThreadLocals may be added by those threads.
  * @author Mattias Jiderhamn
  */
 @SuppressWarnings("WeakerAccess")
-public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
+public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAfter<ClassLoaderPreMortemCleanUp> {
 
   /** Class name for per thread transaction in Caucho Resin transaction manager */
   private static final String CAUCHO_TRANSACTION_IMPL = "com.caucho.transaction.TransactionImpl";
@@ -28,6 +29,13 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp {
   protected Field java_lang_ThreadLocal$ThreadLocalMap_table;
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
+
+  /** Needs to be done after {@link StopThreadsCleanUp}, since new {@link ThreadLocal}s may be added when threads are 
+   * shutting down. */
+  @Override
+  public Class<? extends ClassLoaderPreMortemCleanUp>[] mustBeBeforeMe() {
+    return new Class[] {StopThreadsCleanUp.class};
+  }
 
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {

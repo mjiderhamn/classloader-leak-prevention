@@ -88,17 +88,30 @@ public class ClassLoaderLeakPreventorFactory {
   
   /** Add a new {@link PreClassLoaderInitiator}, using the class name as name */
   public void addPreInitiator(PreClassLoaderInitiator preClassLoaderInitiator) {
-    this.preInitiators.put(preClassLoaderInitiator.getClass().getName(), preClassLoaderInitiator);
+    addConsideringOrder(this.preInitiators, preClassLoaderInitiator);
   }
 
-  /** Add a new named {@link PreClassLoaderInitiator} */
-  public void addPreInitiator(String name, PreClassLoaderInitiator preClassLoaderInitiator) {
-    this.preInitiators.put(name, preClassLoaderInitiator);
-  }
-  
   /** Add a new {@link ClassLoaderPreMortemCleanUp}, using the class name as name */
   public void addCleanUp(ClassLoaderPreMortemCleanUp classLoaderPreMortemCleanUp) {
-    this.cleanUps.put(classLoaderPreMortemCleanUp.getClass().getName(), classLoaderPreMortemCleanUp);
+    addConsideringOrder(this.cleanUps, classLoaderPreMortemCleanUp);
+  }
+  
+  /** Add new {@link I} entry to {@code map}, taking {@link MustBeAfter} into account */
+  private <I> void addConsideringOrder(Map<String, I> map, I newEntry) {
+    for(Map.Entry<String, I> entry : map.entrySet()) {
+      if(entry.getValue() instanceof MustBeAfter<?>) {
+        final Class<? extends ClassLoaderPreMortemCleanUp>[] existingMustBeAfter = 
+            ((MustBeAfter<ClassLoaderPreMortemCleanUp>)entry.getValue()).mustBeBeforeMe();
+        for(Class<? extends ClassLoaderPreMortemCleanUp> clazz : existingMustBeAfter) {
+          if(clazz.isAssignableFrom(newEntry.getClass())) { // Entry needs to be after new entry
+            // TODO Resolve order automatically #51
+            throw new IllegalStateException(clazz.getName() + " must be added after " + newEntry.getClass());
+          }
+        }
+      }
+    }
+    
+    map.put(newEntry.getClass().getName(), newEntry);
   }
 
   /** Add a new named {@link ClassLoaderPreMortemCleanUp} */
