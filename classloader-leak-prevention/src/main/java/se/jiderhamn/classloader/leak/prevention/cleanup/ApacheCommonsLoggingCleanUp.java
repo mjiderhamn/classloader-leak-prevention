@@ -3,9 +3,6 @@ package se.jiderhamn.classloader.leak.prevention.cleanup;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
-import static com.sun.beans.finder.ClassFinder.findClass;
-import static sun.management.Agent.error;
-
 /**
  * Release this classloader from Apache Commons Logging (ACL) by calling 
  * {@code LogFactory.release(getCurrentClassLoader());}
