@@ -8,11 +8,13 @@ import javax.xml.datatype.Duration;
 import javax.xml.datatype.XMLGregorianCalendar;
 
 import org.junit.Before;
+import org.junit.Ignore;
 
 /**
  * Test cases for {@link DatatypeConverterImplInitiator}
  * @author Mattias Jiderhamn
  */
+@Ignore // Doesn't leak in Java 1.7.0 (_55, _56), but does in 1.8.0 (_74) 
 public class DatatypeConverterImplInitiatorTest extends PreClassLoaderInitiatorTestBase<DatatypeConverterImplInitiator> {
   @Before
   public void setSystemProperty() {
