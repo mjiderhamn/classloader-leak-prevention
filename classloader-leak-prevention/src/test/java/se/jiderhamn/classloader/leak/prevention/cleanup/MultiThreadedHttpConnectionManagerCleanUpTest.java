@@ -1,15 +1,13 @@
-package se.jiderhamn.classloader.leak.prevention.cleaup;
+package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import com.sun.jersey.api.client.Client;
 import com.sun.jersey.api.client.ClientResponse;
 import com.sun.jersey.api.client.WebResource;
 import com.sun.jersey.api.client.config.DefaultClientConfig;
 import com.sun.jersey.client.apache.ApacheHttpClient;
-import se.jiderhamn.classloader.leak.prevention.cleanup.ClassLoaderPreMortemCleanUpTestBase;
-import se.jiderhamn.classloader.leak.prevention.cleanup.MultiThreadedHttpConnectionManagerCleanUp;
 
 /**
- * Test case for leaks caused by {@link com.sun.jersey.client.apache.ApacheHttpClient} failing to 
+ * Test case for leaks caused by {@link ApacheHttpClient} failing to 
  * close {@link org.apache.commons.httpclient.MultiThreadedHttpConnectionManager}
  *
  * @author Marian Petrik

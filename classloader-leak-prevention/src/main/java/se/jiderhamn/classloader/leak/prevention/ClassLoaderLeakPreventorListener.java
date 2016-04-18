@@ -183,7 +183,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
     
     // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 Move to factory
-    // This part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
+    // The pre-initiators part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
     // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
     classLoaderLeakPreventorFactory.addPreInitiator(new AwtToolkitInitiator());
     // initSecurityProviders()
@@ -215,7 +215,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventorFactory.addCleanUp(new IntrospectionUtilsCleanUp());
     // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
     classLoaderLeakPreventorFactory.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
-    classLoaderLeakPreventorFactory.addCleanUp(new MultiThreadedHttpConnectionManagerCleanUp());
     
     ////////////////////
     // Fix generic leaks
