@@ -1,4 +1,6 @@
 language: java
+jdk:
+  - oraclejdk8
 sudo: false
 # http://docs.travis-ci.com/user/customizing-the-build/#Build-Matrix + https://lord.io/blog/2014/travis-multiple-subdirs/
 script: cd classloader-leak-test-framework && mvn install && cd ../classloader-leak-prevention && mvn test
