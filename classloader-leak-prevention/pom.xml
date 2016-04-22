@@ -39,6 +39,7 @@
   <modules>
     <module>classloader-leak-prevention-core</module>
     <module>classloader-leak-prevention-servlet</module>
+    <module>classloader-leak-prevention-servlet3</module>
   </modules>
 
   <developers>

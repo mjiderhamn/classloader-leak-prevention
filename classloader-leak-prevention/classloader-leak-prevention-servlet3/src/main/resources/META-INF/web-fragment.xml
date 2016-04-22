@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-fragment xmlns="http://java.sun.com/xml/ns/javaee"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-fragment_3_0.xsd"
+              version="3.0">
+
+  <name>classloader_leak_prevention</name>
+  <distributable/>
+
+  <!--
+    Configure this fragment to be ordered before others, so that the listener is "outermost"
+    https://blogs.oracle.com/swchan/entry/servlet_3_0_web_fragment
+  -->
+  <ordering>
+    <before>
+      <others />
+    </before>
+  </ordering>
+
+  <listener>
+    <listener-class>se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorListener</listener-class>
+  </listener>
+
+</web-fragment> 
