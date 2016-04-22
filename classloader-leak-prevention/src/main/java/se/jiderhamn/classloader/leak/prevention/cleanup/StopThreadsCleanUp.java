@@ -28,7 +28,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
   protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
   
   /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
-  protected final boolean stopTimerThreads;
+  protected boolean stopTimerThreads;
 
   /** Default constructor with {@link #stopThreads} = true and {@link #stopTimerThreads} = true */
   @SuppressWarnings("unused")
@@ -39,6 +39,14 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
   public StopThreadsCleanUp(boolean stopThreads, boolean stopTimerThreads) {
     this.stopThreads = stopThreads;
     this.stopTimerThreads = stopTimerThreads;
+  }
+
+  public void setStopTimerThreads(boolean stopTimerThreads) {
+    this.stopTimerThreads = stopTimerThreads;
+  }
+
+  public void setThreadWaitMs(int threadWaitMs) {
+    this.threadWaitMs = threadWaitMs;
   }
 
   @Override

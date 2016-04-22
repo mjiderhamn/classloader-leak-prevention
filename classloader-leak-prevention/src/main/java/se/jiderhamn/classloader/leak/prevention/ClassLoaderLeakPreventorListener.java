@@ -180,62 +180,22 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     
     info("Initializing context by loading some known offenders with system classloader");
     
+    // Create factory with default PreClassLoaderInitiators and ClassLoaderPreMortemCleanUps
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
     
-    // TODO https://github.com/mjiderhamn/classloader-leak-prevention/issues/44 Move to factory
-    // The pre-initiators part is heavily inspired by Tomcats JreMemoryLeakPreventionListener  
-    // See http://svn.apache.org/viewvc/tomcat/trunk/java/org/apache/catalina/core/JreMemoryLeakPreventionListener.java?view=markup
-    classLoaderLeakPreventorFactory.addPreInitiator(new AwtToolkitInitiator());
-    // initSecurityProviders()
-    classLoaderLeakPreventorFactory.addPreInitiator(new JdbcDriversInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new SunAwtAppContextInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new SecurityPolicyInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new SecurityProvidersInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new DocumentBuilderFactoryInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new ReplaceDOMNormalizerSerializerAbortException());
-    classLoaderLeakPreventorFactory.addPreInitiator(new DatatypeConverterImplInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new JavaxSecurityLoginConfigurationInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new JarUrlConnectionInitiator());
-    // Load Sun specific classes that may cause leaks
-    classLoaderLeakPreventorFactory.addPreInitiator(new LdapPoolManagerInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new Java2dDisposerInitiator());
-    classLoaderLeakPreventorFactory.addPreInitiator(new SunGCInitiator());
-    if(startOracleTimeoutThread)
-      classLoaderLeakPreventorFactory.addPreInitiator(new OracleJdbcThreadInitiator());
+    // Configure default PreClassLoaderInitiators 
+    if(! startOracleTimeoutThread)
+      classLoaderLeakPreventorFactory.removePreInitiator(OracleJdbcThreadInitiator.class);
 
-    classLoaderLeakPreventorFactory.addCleanUp(new BeanIntrospectorCleanUp());
+    // Configure default ClassLoaderPreMortemCleanUps 
+    final ShutdownHookCleanUp shutdownHookCleanUp = classLoaderLeakPreventorFactory.getCleanUp(ShutdownHookCleanUp.class);
+    shutdownHookCleanUp.setExecuteShutdownHooks(executeShutdownHooks);
+    shutdownHookCleanUp.setShutdownHookWaitMs(shutdownHookWaitMs);
     
-    // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
-    classLoaderLeakPreventorFactory.addCleanUp(new BeanELResolverCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new BeanValidationCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new JavaServerFaces2746CleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new GeoToolsCleanUp());
-    // Can we do anything about Google Guice ?
-    // Can we do anything about Groovy http://jira.codehaus.org/browse/GROOVY-4154 ?
-    classLoaderLeakPreventorFactory.addCleanUp(new IntrospectionUtilsCleanUp());
-    // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
-    classLoaderLeakPreventorFactory.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
-    
-    ////////////////////
-    // Fix generic leaks
-    classLoaderLeakPreventorFactory.addCleanUp(new DriverManagerCleanUp());
-    
-    classLoaderLeakPreventorFactory.addCleanUp(new DefaultAuthenticatorCleanUp());
+    final StopThreadsCleanUp stopThreadsCleanUp = classLoaderLeakPreventorFactory.getCleanUp(StopThreadsCleanUp.class);
+    stopThreadsCleanUp.setStopTimerThreads(stopTimerThreads);
+    stopThreadsCleanUp.setThreadWaitMs(threadWaitMs);
 
-    classLoaderLeakPreventorFactory.addCleanUp(new MBeanCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new MXBeanNotificationListenersCleanUp());
-    
-    classLoaderLeakPreventorFactory.addCleanUp(new ShutdownHookCleanUp(executeShutdownHooks, shutdownHookWaitMs));
-    classLoaderLeakPreventorFactory.addCleanUp(new PropertyEditorCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new SecurityProviderCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new ProxySelectorCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new RmiTargetsCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new StopThreadsCleanUp(stopThreads, stopTimerThreads));
-    classLoaderLeakPreventorFactory.addCleanUp(new ThreadGroupCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new ThreadLocalCleanUp()); // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads
-    classLoaderLeakPreventorFactory.addCleanUp(new KeepAliveTimerCacheCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new ResourceBundleCleanUp());
-    classLoaderLeakPreventorFactory.addCleanUp(new ApacheCommonsLoggingCleanUp()); // Do this last, in case other shutdown procedures want to log something.
 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory.newLeakPreventor(webAppClassLoader);
 

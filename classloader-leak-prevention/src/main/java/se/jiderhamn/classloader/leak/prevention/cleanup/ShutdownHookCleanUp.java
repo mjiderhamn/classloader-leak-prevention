@@ -37,6 +37,14 @@ public class ShutdownHookCleanUp implements ClassLoaderPreMortemCleanUp {
     this.shutdownHookWaitMs = shutdownHookWaitMs;
   }
 
+  public void setExecuteShutdownHooks(boolean executeShutdownHooks) {
+    this.executeShutdownHooks = executeShutdownHooks;
+  }
+
+  public void setShutdownHookWaitMs(int shutdownHookWaitMs) {
+    this.shutdownHookWaitMs = shutdownHookWaitMs;
+  }
+
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
     
