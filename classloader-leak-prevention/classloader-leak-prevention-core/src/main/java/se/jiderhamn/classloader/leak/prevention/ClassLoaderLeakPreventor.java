@@ -499,7 +499,7 @@ public class ClassLoaderLeakPreventor {
    */
   public static void gc() {
     if (isDisableExplicitGCEnabled()) {
-      System.err.println(ClassLoaderLeakPreventorListener.class.getSimpleName() + ": "
+      System.err.println(ClassLoaderLeakPreventor.class.getSimpleName() + ": "
           + "Skipping GC call since -XX:+DisableExplicitGC is supplied as VM option.");
       return;
     }

@@ -113,7 +113,7 @@ import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookClean
  *   just add this one <code>.java</code> file into your own source tree.
  * </p>
  * 
- * @author Mattias Jiderhamn, 2012-2013
+ * @author Mattias Jiderhamn, 2012-2016
  */
 @SuppressWarnings("WeakerAccess")
 public class ClassLoaderLeakPreventorListener implements ServletContextListener {
