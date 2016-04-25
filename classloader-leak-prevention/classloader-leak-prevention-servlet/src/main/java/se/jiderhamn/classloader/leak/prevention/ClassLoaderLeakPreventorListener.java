@@ -21,9 +21,12 @@ import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
-import se.jiderhamn.classloader.leak.prevention.cleanup.*;
-import se.jiderhamn.classloader.leak.prevention.preinit.*;
+import se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.StopThreadsCleanUp;
+import se.jiderhamn.classloader.leak.prevention.preinit.OracleJdbcThreadInitiator;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 import static se.jiderhamn.classloader.leak.prevention.cleanup.ShutdownHookCleanUp.SHUTDOWN_HOOK_WAIT_MS_DEFAULT;
 
 /**
@@ -123,11 +126,15 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   /** Other {@link javax.servlet.ServletContextListener}s to use also */
   protected final List<ServletContextListener> otherListeners = new LinkedList<ServletContextListener>();
 
-  public ClassLoaderLeakPreventorListener() {
+  /** 
+   * Get the default set of other {@link ServletContextListener} to be automatically invoked.
+   * NOTE! Anything added here should be idempotent, i.e. there should be no problem executing the listener twice.
+   */
+  static List<ServletContextListener> getDefaultOtherListeners() {
     try{
       Class<ServletContextListener> introspectorCleanupListenerClass = 
           (Class<ServletContextListener>) Class.forName("org.springframework.web.util.IntrospectorCleanupListener");
-      otherListeners.add(introspectorCleanupListenerClass.newInstance());
+      return singletonList(introspectorCleanupListenerClass.newInstance());
     }
     catch (ClassNotFoundException e) {
       // Ignore silently - Spring not present on classpath
@@ -135,14 +142,30 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     catch(Exception e){
       e.printStackTrace(System.err);
     }
-  }
+    return emptyList();
+  } 
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Implement javax.servlet.ServletContextListener 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   @Override
   public void contextInitialized(ServletContextEvent servletContextEvent) {
-    final ServletContext servletContext = servletContextEvent.getServletContext();
+    otherListeners.addAll(getDefaultOtherListeners());
+
+    contextInitialized(servletContextEvent.getServletContext());
+
+    for(ServletContextListener listener : otherListeners) {
+      try {
+        listener.contextInitialized(servletContextEvent);
+      }
+      catch(Exception e){
+        classLoaderLeakPreventor.error(e);
+      }
+    }
+  }
+  
+  void contextInitialized(final ServletContext servletContext) {
     
     // Should threads tied to the web app classloader be forced to stop at application shutdown?
     boolean stopThreads = ! "false".equals(servletContext.getInitParameter("ClassLoaderLeakPreventor.stopThreads"));
@@ -178,8 +201,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     info("  threadWaitMs = " + threadWaitMs + " ms");
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
-    info("Initializing context by loading some known offenders with system classloader");
-    
     // Create factory with default PreClassLoaderInitiators and ClassLoaderPreMortemCleanUps
     final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
     
@@ -200,15 +221,6 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     classLoaderLeakPreventor = classLoaderLeakPreventorFactory.newLeakPreventor(webAppClassLoader);
 
     classLoaderLeakPreventor.runPreClassLoaderInitiators();
-
-    for(ServletContextListener listener : otherListeners) {
-      try {
-        listener.contextInitialized(servletContextEvent);
-      }
-      catch(Exception e){
-        classLoaderLeakPreventor.error(e);
-      }
-    }
   }
 
   @Override

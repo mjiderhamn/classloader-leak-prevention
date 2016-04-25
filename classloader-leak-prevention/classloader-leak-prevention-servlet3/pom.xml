@@ -17,6 +17,19 @@
       <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
       <artifactId>classloader-leak-prevention-servlet</artifactId>
       <version>${project.parent.version}</version>
+      <!-- Exclude Servlet 2.5 API -->
+      <exclusions>
+        <exclusion>
+          <groupId>javax.servlet</groupId>
+          <artifactId>servlet-api</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>3.0.1</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 

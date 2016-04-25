@@ -10,15 +10,13 @@
   <!--
     Configure this fragment to be ordered before others, so that the listener is "outermost"
     https://blogs.oracle.com/swchan/entry/servlet_3_0_web_fragment
+    
+    This may have no effect on javax.servlet.ServletContainerInitializer in Servlet 3.0/3.1 containers https://java.net/jira/browse/SERVLET_SPEC-79
   -->
   <ordering>
     <before>
       <others />
     </before>
   </ordering>
-
-  <listener>
-    <listener-class>se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorListener</listener-class>
-  </listener>
 
 </web-fragment> 

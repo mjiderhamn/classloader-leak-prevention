@@ -71,6 +71,8 @@ public class ClassLoaderLeakPreventor {
   
   /** Invoke all the registered {@link PreClassLoaderInitiator}s in the {@link #leakSafeClassLoader} */
   public void runPreClassLoaderInitiators() {
+    info("Initializing by loading some known offenders with leak safe classloader"); 
+    
     doInLeakSafeClassLoader(new Runnable() {
       @Override
       public void run() {
