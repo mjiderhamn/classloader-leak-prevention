@@ -31,7 +31,7 @@ public abstract class PreventionsTestBase<C> {
   protected ClassLoaderLeakPreventor getClassLoaderLeakPreventor() {
     return new ClassLoaderLeakPreventor(getLeakSafeClassLoader(),
         getClass().getClassLoader(),
-        new LoggerImpl(), 
+        new StdLogger(), 
         Collections.<PreClassLoaderInitiator>emptyList(),
         Collections.<ClassLoaderPreMortemCleanUp>emptyList());
   }

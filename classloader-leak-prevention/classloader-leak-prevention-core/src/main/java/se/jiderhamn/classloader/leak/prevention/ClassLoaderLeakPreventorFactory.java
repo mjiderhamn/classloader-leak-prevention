@@ -28,7 +28,7 @@ public class ClassLoaderLeakPreventorFactory {
    * The {@link Logger} that will be passed on to the different {@link PreClassLoaderInitiator}s and 
    * {@link ClassLoaderPreMortemCleanUp}s 
    */
-  protected Logger logger = new LoggerImpl();
+  protected Logger logger = new JULLogger();
 
   /** 
    * Map from name to {@link PreClassLoaderInitiator}s with all the actions to invoke in the 
