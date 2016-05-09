@@ -4,14 +4,22 @@ import java.lang.reflect.Method;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
+import se.jiderhamn.classloader.leak.prevention.MustBeAfter;
 
 /**
  * Destroy any {@link ThreadGroup}s that are loaded by the protected classloader
  * @author Mattias Jiderhamn
  */
-public class ThreadGroupCleanUp implements ClassLoaderPreMortemCleanUp {
+public class ThreadGroupCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAfter {
+
+  @Override
+  public Class[] mustBeBeforeMe() {
+    return new Class[] {JavaServerFaces2746CleanUp.class};
+  }
+
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
+    boolean threadGroupDestroyed = false;
     try {
       ThreadGroup systemThreadGroup = Thread.currentThread().getThreadGroup();
       while(systemThreadGroup.getParent() != null) {
@@ -45,6 +53,7 @@ public class ThreadGroupCleanUp implements ClassLoaderPreMortemCleanUp {
 
           try {
             threadGroup.destroy();
+            threadGroupDestroyed = true;
             preventor.info("ThreadGroup '" + threadGroup + "' successfully destroyed");
           }
           catch (Exception e) {
@@ -60,6 +69,9 @@ public class ThreadGroupCleanUp implements ClassLoaderPreMortemCleanUp {
     try {
       final Object contexts = preventor.getStaticFieldValue("java.beans.ThreadGroupContext", "contexts");
       if(contexts != null) { // Since Java 1.7
+        if(threadGroupDestroyed) // At least one ThreadGroup destroyed by this clean up 
+          ClassLoaderLeakPreventor.gc(); // Force GC so WeakIdentityMap turns destroyed ThreadGroups into stale entries
+
         final Method removeStaleEntries = preventor.findMethod("java.beans.WeakIdentityMap", "removeStaleEntries");
         if(removeStaleEntries != null)
           removeStaleEntries.invoke(contexts);
