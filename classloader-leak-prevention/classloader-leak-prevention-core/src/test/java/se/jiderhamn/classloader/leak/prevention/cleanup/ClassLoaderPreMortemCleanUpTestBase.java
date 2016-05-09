@@ -21,13 +21,13 @@ public abstract class ClassLoaderPreMortemCleanUpTestBase<C extends ClassLoaderP
    */
   @SuppressWarnings("DefaultAnnotationParam")
   @Test
-  @Leaks(true) // Without the cleanup we should expect a leak
+  @Leaks(value = true, dumpHeapOnError = true) // Without the cleanup we should expect a leak
   public void triggerLeakWithoutCleanup() throws Exception {
     triggerLeak();
   }
   
   @Test
-  @Leaks(false) // After having run the cleanup, there should be no leak
+  @Leaks(value = false, dumpHeapOnError = true) // After having run the cleanup, there should be no leak
   public void cleanUpAfterTriggeringLeak() throws Exception {
     triggerLeak();
     getClassLoaderPreMortemCleanUp().cleanUp(getClassLoaderLeakPreventor());
