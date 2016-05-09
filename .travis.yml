@@ -4,3 +4,9 @@ jdk:
 sudo: false
 # http://docs.travis-ci.com/user/customizing-the-build/#Build-Matrix + https://lord.io/blog/2014/travis-multiple-subdirs/
 script: cd classloader-leak-test-framework && mvn install && cd ../classloader-leak-prevention && mvn test
+
+# Uncomment to upload heapdumps to S3 bucket; https://docs.travis-ci.com/user/uploading-artifacts/
+#addons:
+#  artifacts:
+#    paths:
+#      - $(ls $HOME/build/mjiderhamn/classloader-leak-prevention/classloader-leak-prevention/classloader-leak-prevention-core/target/surefire-reports/*.hprof | tr "\n" ":")
