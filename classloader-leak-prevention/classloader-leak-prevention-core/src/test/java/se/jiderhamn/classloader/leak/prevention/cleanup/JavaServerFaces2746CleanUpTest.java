@@ -6,8 +6,6 @@ import javax.faces.component.UIComponentBase;
 
 import com.sun.faces.el.ELContextImpl;
 
-import static se.jiderhamn.classloader.leak.JUnitClassloaderRunner.forceGc;
-
 /**
  * Test case for {@link JavaServerFaces2746CleanUp}
  * @author Mattias Jiderhamn
@@ -55,31 +53,14 @@ public class JavaServerFaces2746CleanUpTest extends ClassLoaderPreMortemCleanUpT
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   /** 
-   * Since {@link #doTriggerLeak()} also triggers a {@link ThreadGroup} leak, by {@link java.beans.Introspector#getBeanInfo(java.lang.Class<?>)}
+   * Since {@link #doTriggerLeak()} also triggers another leak, by {@link java.beans.Introspector#getBeanInfo(java.lang.Class<?>)}
    * invoking {@link java.beans.ThreadGroupContext}, we need to fix that leak as part of the triggering.
    */
   @SuppressWarnings("UnusedAssignment")
   @Override
   protected void triggerLeak() throws Exception {
-    doInDummyThreadGroup(new Runnable() {
-      @Override
-      public void run() {
-        doTriggerLeak();
-      }
-    });
+    doTriggerLeak();
 
-    forceGc(3);
-
-    new ThreadGroupCleanUp().cleanUp(getClassLoaderLeakPreventor());
+    new ThreadGroupContextCleanUp().cleanUp(getClassLoaderLeakPreventor());
   }
-  
-  /** Invoke {@link Runnable} in a dumme {@link ThreadGroup} that after this method returns is ready for GC */
-  private static void doInDummyThreadGroup(Runnable runnable) throws InterruptedException {
-    final ThreadGroup threadGroup = new ThreadGroup("dummy-group");
-    final Thread thread = new Thread(threadGroup, runnable, "dummy-thread");
-    thread.start();
-    thread.join();
-    threadGroup.destroy();
-  }
-
 }
