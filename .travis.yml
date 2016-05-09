@@ -9,4 +9,7 @@ cache:
 before_cache:
   - cp /home/travis/build/mjiderhamn/classloader-leak-prevention/classloader-leak-prevention/classloader-leak-prevention-core/target/surefire-reports/* $HOME/heapdump
 # http://docs.travis-ci.com/user/customizing-the-build/#Build-Matrix + https://lord.io/blog/2014/travis-multiple-subdirs/
-script: mvn -version; cd classloader-leak-test-framework && mvn install && cd ../classloader-leak-prevention && mvn test
+script: mvn -version; cd classloader-leak-test-framework && mvn clean install && cd ../classloader-leak-prevention && mvn clean test
+# https://docs.travis-ci.com/user/uploading-artifacts/
+addons:
+  artifacts: true
