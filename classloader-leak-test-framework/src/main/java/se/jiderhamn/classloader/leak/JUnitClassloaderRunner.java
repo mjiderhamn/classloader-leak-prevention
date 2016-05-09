@@ -91,7 +91,7 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
     public void evaluate() throws Throwable {
       final ClassLoader clBefore = Thread.currentThread().getContextClassLoader();
 
-      final String testName = originalMethod.getDeclaringClass().getName() + '.' + originalMethod.getName();
+      final String testName =  getTestClass().getName() + '.' + originalMethod.getName();
       RedefiningClassLoader myClassLoader = (ignoredPackages != null) ? 
           new RedefiningClassLoader(clBefore, testName, ignoredPackages): 
           new RedefiningClassLoader(clBefore, testName);
