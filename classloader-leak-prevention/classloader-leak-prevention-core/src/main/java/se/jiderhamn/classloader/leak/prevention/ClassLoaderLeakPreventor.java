@@ -247,8 +247,13 @@ public class ClassLoaderLeakPreventor {
     return false;
   }
 
+  /**
+   * Is the {@link Thread} ties do the protected classloader, either by being a custom {@link Thread} class, having a 
+   * custom {@link ThreadGroup} or having the protected classloader as its {@link Thread#contextClassLoader}?
+   */
   public boolean isThreadInClassLoader(Thread thread) {
     return isLoadedInClassLoader(thread) || // Custom Thread class in classloader
+       isLoadedInClassLoader(thread.getThreadGroup()) || // Custom ThreadGroup class in classloader 
        isClassLoaderOrChild(thread.getContextClassLoader()); // Running in classloader
   }
   
