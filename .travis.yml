@@ -3,8 +3,9 @@ jdk:
   - oraclejdk8
 sudo: false
 # http://docs.travis-ci.com/user/customizing-the-build/#Build-Matrix + https://lord.io/blog/2014/travis-multiple-subdirs/
-script: mvn -version; cd classloader-leak-test-framework && mvn clean install && cd ../classloader-leak-prevention && mvn clean test
-# https://docs.travis-ci.com/user/uploading-artifacts/
+script: cd classloader-leak-test-framework && mvn install && cd ../classloader-leak-prevention && mvn test
+
+# Uncomment to upload heapdumps to S3 bucket; https://docs.travis-ci.com/user/uploading-artifacts/
 addons:
   artifacts:
     paths:
