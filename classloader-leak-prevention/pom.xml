@@ -99,6 +99,9 @@
             <mavenExecutorId>forked-path</mavenExecutorId>
             <useReleaseProfile>false</useReleaseProfile>
             <arguments>-Prelease</arguments>
+            <autoVersionSubmodules>true</autoVersionSubmodules>
+            <!-- Avoid cloning from remote repo when releasing -->
+            <localCheckout>true</localCheckout>
           </configuration>
         </plugin>
       </plugins>
