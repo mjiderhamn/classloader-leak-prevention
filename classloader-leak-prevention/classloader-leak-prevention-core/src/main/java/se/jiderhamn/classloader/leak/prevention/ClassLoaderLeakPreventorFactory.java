@@ -111,6 +111,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addCleanUp(new ShutdownHookCleanUp());
     this.addCleanUp(new PropertyEditorCleanUp());
     this.addCleanUp(new SecurityProviderCleanUp());
+    this.addCleanUp(new JceSecurityCleanUp()); // (Probably best to do after deregistering the providers)
     this.addCleanUp(new ProxySelectorCleanUp());
     this.addCleanUp(new RmiTargetsCleanUp());
     this.addCleanUp(new StopThreadsCleanUp());
