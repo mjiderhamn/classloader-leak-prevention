@@ -1,8 +1,8 @@
 # Classloader Leak Prevention library integration
 
 _This document is about using the Classloader Leak Prevention library in
-a non-servlet environment. For servlet environments, please see the
-[root README.md](../../README.md)_
+a non-servlet environment. For general information and use in servlet 
+environments, please see the [root README.md](../../README.md)_
 
 Version 2.x of the Classloader Leak Prevention library has been refactored
 to allow for use outside a servlet environment, or by all means in a
