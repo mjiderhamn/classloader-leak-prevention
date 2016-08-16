@@ -1,12 +1,10 @@
 # Classloader Leak Prevention library
 [![Build Status](https://travis-ci.org/mjiderhamn/classloader-leak-prevention.svg?branch=master)](http://travis-ci.org/mjiderhamn/classloader-leak-prevention)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn/classloader-leak-prevention/)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn.classloader-leak-prevention/classloader-leak-prevention-servlet3/badge.svg)](https://maven-badges.herokuapp.com/maven-central/se.jiderhamn.classloader-leak-prevention/classloader-leak-prevention-servlet3/)
 [![License](https://img.shields.io/badge/license-Apache2-blue.svg?style=flat)](https://github.com/mjiderhamn/classloader-leak-prevention/blob/master/LICENSE.txt)
 
-_**NOTE!** This documentation is for the not yet released 2.0. For 1.x, please see [the 1.x branch](https://github.com/mjiderhamn/classloader-leak-prevention/tree/1.x)._
-
 If you want to avoid the dreaded `java.lang.OutOfMemoryError: Metaspace` / `PermGen space`, 
-just include this library into your Java EE application and it shoult take care of the rest!
+just include this library into your Java EE application and it should take care of the rest!
 
 To learn more about classloader leaks, their causes, types, ways to find them and known offenders, see blog series here: http://java.jiderhamn.se/category/classloader-leaks/
 
