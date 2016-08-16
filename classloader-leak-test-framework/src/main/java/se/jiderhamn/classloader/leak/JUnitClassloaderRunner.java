@@ -16,6 +16,7 @@ import org.junit.runners.model.TestClass;
 import se.jiderhamn.HeapDumper;
 import se.jiderhamn.classloader.PackagesLoadedOutsideClassLoader;
 import se.jiderhamn.classloader.RedefiningClassLoader;
+import se.jiderhamn.classloader.ZombieMarker;
 
 import static se.jiderhamn.HeapDumper.HEAP_DUMP_EXTENSION;
 
@@ -208,8 +209,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
   }
 
   private static void waitForHeapDump() throws InterruptedException {
-    System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump aquirement");
-    // TODO: Inform about ZombieMarker
+    System.out.println("Waiting " + HALT_TIME_S + " seconds to allow for heap dump acquirement");
+    System.out.println("Tip: You can search for " + ZombieMarker.class.getName() + " in the dump");
     Thread.sleep(HALT_TIME_S * 1000);
   }
 

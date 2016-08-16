@@ -38,6 +38,7 @@ You also have to add this to your `web.xml`:
   <listener-class>se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventorListener</listener-class>
 </listener>
 ```
+_Note that the name of the listener class has changed since 1.x!_
 
 It makes sense to keep this listener "outermost" (initializing first, 
 destroying last), so you should normally declare it before any other 
