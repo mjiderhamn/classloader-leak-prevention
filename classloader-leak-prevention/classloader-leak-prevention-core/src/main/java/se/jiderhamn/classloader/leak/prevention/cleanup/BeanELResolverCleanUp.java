@@ -7,8 +7,6 @@ import java.util.Map;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
-import static sun.management.Agent.error;
-
 /**
  * Clean for the cache of {@link javax.el.BeanELResolver}
  * @author Mattias Jiderhamn
@@ -31,7 +29,7 @@ public class BeanELResolverCleanUp implements ClassLoaderPreMortemCleanUp {
         // Version of javax.el probably > 2.2; no real need to clear
       }
       catch (Exception e) {
-        error(e);
+        preventor.error(e);
       }
       
       if(! cleared) {
@@ -43,7 +41,7 @@ public class BeanELResolverCleanUp implements ClassLoaderPreMortemCleanUp {
             properties.clear();
           }
           catch (Exception e) {
-            error(e);
+            preventor.error(e);
           }
         }
       }

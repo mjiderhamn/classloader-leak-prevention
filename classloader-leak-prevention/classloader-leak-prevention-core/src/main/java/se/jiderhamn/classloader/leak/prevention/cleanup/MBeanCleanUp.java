@@ -12,8 +12,6 @@ import javax.management.ObjectName;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
-import static sun.management.Agent.error;
-
 /**
  * Unregister MBeans loaded by the protected class loader
  * @author Mattias Jiderhamn
@@ -56,12 +54,12 @@ public class MBeanCleanUp implements ClassLoaderPreMortemCleanUp {
           */
         }
         catch(Exception e) { // MBeanRegistrationException / InstanceNotFoundException
-          error(e);
+          preventor.error(e);
         }
       }
     }
     catch (Exception e) { // MalformedObjectNameException
-      error(e);
+      preventor.error(e);
     }
     
   }
@@ -206,7 +204,7 @@ public class MBeanCleanUp implements ClassLoaderPreMortemCleanUp {
 		      }
   		  }
         catch (Exception ex)  {
-			    error(ex);
+          preventor.error(ex);
 		    }
 		    return false;
 	    }

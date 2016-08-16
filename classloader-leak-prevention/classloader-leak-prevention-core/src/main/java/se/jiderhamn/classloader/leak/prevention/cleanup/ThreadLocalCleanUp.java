@@ -7,8 +7,6 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 import se.jiderhamn.classloader.leak.prevention.MustBeAfter;
 
-import static sun.management.Agent.error;
-
 /**
  * Clear {@link ThreadLocal}s for which {@link ThreadLocal#remove()} has not been called, in case either the 
  * {@link ThreadLocal} is a custom one (subclassed in the protected ClassLoader), or the value is loaded by (or is)
@@ -76,7 +74,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
       }
     }
     catch (/*IllegalAccess*/Exception ex) {
-      error(ex);
+      preventor.error(ex);
     }
   }
 
@@ -197,7 +195,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
       java_lang_ThreadLocal$ThreadLocalMap$Entry_value.set(entry, null); // Clear value to avoid circular references
     }
     catch (IllegalAccessException iaex) {
-      error(iaex);
+      preventor.error(iaex);
     }
   }
 }
