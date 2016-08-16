@@ -1,5 +1,6 @@
 package se.jiderhamn.classloader;
 
+import org.apache.bcel.classfile.ClassFormatException;
 import org.apache.bcel.classfile.JavaClass;
 
 /** Classloader that redefines classes even if existing in parent */
@@ -64,5 +65,15 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   public String toString() {
     return (name != null) ? (this.getClass().getName() + '[' + name + "]@" + Integer.toHexString(System.identityHashCode(this))) :  
         super.toString();
+  }
+
+  @Override
+  protected Class<?> loadClass(String class_name, boolean resolve) throws ClassNotFoundException {
+    try {
+      return super.loadClass(class_name, resolve);
+    }
+    catch (ClassFormatException e) {
+      throw new RuntimeException("Unable to load class " + class_name, e);
+    }
   }
 }
