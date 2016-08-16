@@ -3,7 +3,7 @@
 
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-test-framework</artifactId>
-  <version>1.1.0-SNAPSHOT</version>
+  <version>1.1.0</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak test framework</name>
   <description>Test framework to confirm suspected classloader leak, and create heap dumps to track the leaks</description>
@@ -13,7 +13,7 @@
     <connection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</connection>
     <developerConnection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</developerConnection>
     <url>https://github.com/mjiderhamn/classloader-leak-prevention.git</url>
-    <tag>HEAD</tag>
+    <tag>classloader-leak-test-framework-1.1.0</tag>
   </scm>
 
   <!-- Configure Release: http://central.sonatype.org/pages/apache-maven.html -->
