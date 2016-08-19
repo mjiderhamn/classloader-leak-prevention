@@ -51,3 +51,13 @@ on the `ClassLoaderLeakPreventor` that corresponds to the `ClassLoader`.
 For an example how to use the framework, feel free to study the
 [ClassLoaderLeakPreventorListener](../classloader-leak-prevention-servlet/src/main/java/se/jiderhamn/classloader/leak/prevention/ClassLoaderLeakPreventorListener.java)
 in the `classloader-leak-prevention-servlet` module.
+
+# Maven
+The module is available in Maven as
+```xml
+<dependency>
+  <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
+  <artifactId>classloader-leak-prevention-core</artifactId>
+  <version>2.0.0</version>
+</dependency>
+```

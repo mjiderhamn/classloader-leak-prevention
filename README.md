@@ -9,7 +9,7 @@ just include this library into your Java EE application and it should take care 
 To learn more about classloader leaks, their causes, types, ways to find them and known offenders, see blog series here: http://java.jiderhamn.se/category/classloader-leaks/
 
 ## Servlet 3.0+
-In a servlet 3.0+ environment, all you need to do is include this Maven 
+In a Servlet 3.0+ environment, all you need to do is include this Maven 
 dependency in your `.war`:
 ```xml
 <dependency>
@@ -18,6 +18,11 @@ dependency in your `.war`:
   <version>2.0.0</version>
 </dependency>
 ```
+
+If you run into problems with the Servlet 3.0 module, try the Servlet 2.5 alternative below.
+Since the [Servlet spec does not guarantee the order of `ServletContainerInitializer`s](https://java.net/jira/browse/SERVLET_SPEC-79),
+it means this library may not initialize first and clean up last in case you have other Servlet 3.0 dependencies, which
+could unexpected behaviour.
 
 ## Servlet 2.5 (and earlier)
 For Servlet 2.5 (and earlier) environments, you need to use a different
