@@ -18,6 +18,7 @@ import se.jiderhamn.classloader.PackagesLoadedOutsideClassLoader;
 import se.jiderhamn.classloader.RedefiningClassLoader;
 import se.jiderhamn.classloader.ZombieMarker;
 
+import static org.junit.Assert.fail;
 import static se.jiderhamn.HeapDumper.HEAP_DUMP_EXTENSION;
 
 /**
@@ -154,10 +155,15 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
               
               forceGc(3);
 
-              performErrorActions(weak, testName);
+              final boolean leak = (weak.get() != null); // Still not garbage collected
+              if(leak) {
+                final String message = "ClassLoader (" + weak.get() + ") has not been garbage collected, " +
+                    "despite running the leak preventor " + leakPreventorName;
+                weak.clear(); // Avoid including this reference in the heap dump
+                performErrorActions(testName);
 
-              Assert.assertNull("ClassLoader (" + weak.get() + ") has not been garbage collected, " +
-                  "despite running the leak preventor " + leakPreventorName, weak.get());
+                fail(message);
+              }
             }
             catch (Exception e) {
               throw new RuntimeException("Leak prevention class " + preventorClass.getName() + " could not be used!", e);
@@ -168,27 +174,36 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
             }
 
           }
-          else // Leak was expected, but we had no prevention mechanism
-            performErrorActions(weak, testName);
+          else { // Leak was expected, but we had no prevention mechanism
+            final boolean leak = (weak.get() != null); // Still not garbage collected
+            if(leak) {
+              redefiningClassLoader = null; // Avoid including this reference in the heap dump 
+              weak.clear(); // Avoid including this reference in the heap dump
+              performErrorActions(testName);
+            }
+          }
 
         }
         else { // We did not expect a leak
-          performErrorActions(weak, testName);
-
-          Assert.assertNull("ClassLoader has not been garbage collected " + weak.get(), weak.get());
+          final boolean leak = (weak.get() != null); // Still not garbage collected
+          if(leak) {
+            final String message = "ClassLoader has not been garbage collected " + weak.get();
+            weak.clear(); // Avoid including this reference in the heap dump
+            performErrorActions(testName);
+            fail(message);
+          }
         }
       }
     }
 
-    private void performErrorActions(WeakReference<RedefiningClassLoader> weak, String testName) throws InterruptedException {
-      if(weak.get() != null) { // Still not garbage collected
-        if(dumpHeapOnError) {
-          dumpHeap(testName);
-        }
+    /** Call only if there is a leak */
+    private void performErrorActions(String testName) throws InterruptedException {
+      if(dumpHeapOnError) {
+        dumpHeap(testName);
+      }
 
-        if(haltBeforeError) {
-          waitForHeapDump();
-        }
+      if(haltBeforeError) {
+        waitForHeapDump();
       }
     }
   }
