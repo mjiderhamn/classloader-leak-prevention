@@ -25,6 +25,9 @@ public class ClassLoaderLeakPreventor {
   private static final ProtectionDomain[] NO_DOMAINS = new ProtectionDomain[0];
 
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
+
+  /** {@link ClassLoader#isAncestor(ClassLoader)} */
+  private final Method java_lang_classLoader_isAncestor;
   
   private final Field java_security_AccessControlContext$combiner;
   
@@ -60,6 +63,9 @@ public class ClassLoaderLeakPreventor {
     this.preClassLoaderInitiators = preClassLoaderInitiators;
     this.cleanUps = cleanUps;
 
+    java_lang_classLoader_isAncestor = findMethod(ClassLoader.class, "isAncestor", ClassLoader.class);
+    NestedProtectionDomainCombinerException.class.getName(); // Should be loaded before switching to leak safe classloader
+    
     this.domainCombiner = createDomainCombiner();
 
     // Reflection inits
@@ -140,21 +146,35 @@ public class ClassLoaderLeakPreventor {
    /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
    private DomainCombiner createDomainCombiner() {
      return new DomainCombiner() {
+       
+       /** Flag to detected recursive calls */
+       private final ThreadLocal<Boolean> isExecuting = new ThreadLocal<Boolean>();
+       
        @Override
        public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
          if(assignedDomains != null && assignedDomains.length > 0) {
            logger.error("Unexpected assignedDomains - please report to developer of this library!");
          }
  
-         // Keep all ProtectionDomain not involving the web app classloader 
-         final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
-         for(ProtectionDomain protectionDomain : currentDomains) {
-           if(protectionDomain.getClassLoader() == null ||
-               ! isClassLoaderOrChild(protectionDomain.getClassLoader())) {
-             output.add(protectionDomain);
+         if(isExecuting.get() == Boolean.TRUE)
+           throw new NestedProtectionDomainCombinerException();
+           
+         try {
+           isExecuting.set(Boolean.TRUE); // Throw NestedProtectionDomainCombinerException on nested calls
+
+           // Keep all ProtectionDomain not involving the web app classloader 
+           final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
+           for(ProtectionDomain protectionDomain : currentDomains) {
+             if(protectionDomain.getClassLoader() == null ||
+                 ! isClassLoaderOrChild(protectionDomain.getClassLoader())) {
+               output.add(protectionDomain);
+             }
            }
+           return output.toArray(new ProtectionDomain[output.size()]);
          }
-         return output.toArray(new ProtectionDomain[output.size()]);
+         finally {
+           isExecuting.remove();
+         }
        }
      };
    }  
@@ -237,14 +257,36 @@ public class ClassLoaderLeakPreventor {
 
   /** Test if provided ClassLoader is the {@link #classLoader}, or a child thereof */
   public boolean isClassLoaderOrChild(ClassLoader cl) {
-    while(cl != null) {
-      if(cl == classLoader)
-        return true;
-      
-      cl = cl.getParent();
+    if(cl == null) {
+      return false;
     }
+    else if(cl == classLoader) {
+      return true;
+    }
+    else { // It could be a child of the webapp classloader
+      if(java_lang_classLoader_isAncestor != null) { // Primarily use ClassLoader.isAncestor()
+        try {
+          return (Boolean) java_lang_classLoader_isAncestor.invoke(cl, classLoader);
+        }
+        catch (Exception e) {
+          error(e);
+        }
+      }
 
-    return false;
+      // We were unable to use ClassLoader.isAncestor()
+      try {
+        while(cl != null) {
+          if(cl == classLoader)
+            return true;
+
+          cl = cl.getParent();
+        }
+      }
+      catch (NestedProtectionDomainCombinerException e) {
+        return false; // Since we needed permission to call getParent(), it is unlikely it is a descendant
+      }
+      return false;
+    }
   }
 
   /**
@@ -545,6 +587,14 @@ public class ClassLoaderLeakPreventor {
     catch (Throwable t) { // Any other Exception, assume we are not shutting down
       return false;
     }
+  }
+
+  /**
+   * Exception thrown when {@link DomainCombiner#combine(ProtectionDomain[], ProtectionDomain[])} is called recursively
+   * during the execution of that same method.
+   */
+  private static class NestedProtectionDomainCombinerException extends RuntimeException {
+
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
