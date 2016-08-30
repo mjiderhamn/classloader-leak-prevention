@@ -3,7 +3,7 @@
 
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-prevention</artifactId>
-  <version>1.15.3</version>
+  <version>1.15.4-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>ClassLoader Leak Prevention library</name>
   <description>ServletContextListener that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
@@ -13,7 +13,7 @@
     <connection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</connection>
     <developerConnection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</developerConnection>
     <url>https://github.com/mjiderhamn/classloader-leak-prevention.git</url>
-    <tag>classloader-leak-prevention-1.15.3</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <!-- Configure Release: http://central.sonatype.org/pages/apache-maven.html -->
