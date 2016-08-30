@@ -1826,7 +1826,7 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     else { // It could be a child of the webapp classloader
       if(java_lang_classLoader_isAncestor != null) { // Primarily use ClassLoader.isAncestor()
         try {
-          return (Boolean) java_lang_classLoader_isAncestor.invoke(webAppCL, cl);
+          return (Boolean) java_lang_classLoader_isAncestor.invoke(cl, webAppCL);
         }
         catch (Exception e) {
           error(e);
