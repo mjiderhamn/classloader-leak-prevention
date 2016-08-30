@@ -1817,7 +1817,10 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     final ClassLoader webAppCL = getWebApplicationClassLoader();
     // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
     
-    if(cl == webAppCL) {
+    if(cl == null) {
+      return false;
+    }
+    else if(cl == webAppCL) {
       return true;
     }
     else { // It could be a child of the webapp classloader
