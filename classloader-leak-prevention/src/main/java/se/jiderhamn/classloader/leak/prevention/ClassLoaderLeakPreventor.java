@@ -191,6 +191,9 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 
   protected Field java_lang_ThreadLocal$ThreadLocalMap$Entry_value;
 
+  /** {@link ClassLoader#isAncestor(ClassLoader)} */
+  private final Method java_lang_classLoader_isAncestor;
+
   private final Field java_security_AccessControlContext$combiner;
   
   private final Field java_security_AccessControlContext$parent;
@@ -199,21 +202,34 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
 
   /** {@link DomainCombiner} that filters any {@link ProtectionDomain}s loaded by our classloader */
   private final DomainCombiner domainCombiner = new DomainCombiner() {
+    
+    private final ThreadLocal<Boolean> isExecuting = new ThreadLocal<Boolean>();
+    
     @Override
     public ProtectionDomain[] combine(ProtectionDomain[] currentDomains, ProtectionDomain[] assignedDomains) {
       if(assignedDomains != null && assignedDomains.length > 0) {
         error("Unexpected assignedDomains - please report to developer of this library!");
       }
       
-      // Keep all ProtectionDomain not involving the web app classloader 
-      final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
-      for(ProtectionDomain protectionDomain : currentDomains) {
-        if(protectionDomain.getClassLoader() == null || 
-           ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
-          output.add(protectionDomain);
+      if(isExecuting.get() == Boolean.TRUE)
+        throw new NestedProtectionDomainCombinerException();
+      
+      try {
+        isExecuting.set(Boolean.TRUE); // Throw NestedProtectionDomainCombinerException on nested calls
+
+        // Keep all ProtectionDomain not involving the web app classloader 
+        final List<ProtectionDomain> output = new ArrayList<ProtectionDomain>();
+        for(ProtectionDomain protectionDomain : currentDomains) {
+          if(protectionDomain.getClassLoader() == null ||
+              ! isWebAppClassLoaderOrChild(protectionDomain.getClassLoader())) {
+            output.add(protectionDomain);
+          }
         }
+        return output.toArray(new ProtectionDomain[output.size()]);
       }
-      return output.toArray(new ProtectionDomain[output.size()]);
+      finally {
+        isExecuting.remove();
+      }
     }
   };
 
@@ -233,7 +249,8 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     java_security_AccessControlContext$combiner = findField(AccessControlContext.class, "combiner");
     java_security_AccessControlContext$parent = findField(AccessControlContext.class, "parent");
     java_security_AccessControlContext$privilegedContext = findField(AccessControlContext.class, "privilegedContext");
-    
+    java_lang_classLoader_isAncestor = findMethod(ClassLoader.class, "isAncestor", ClassLoader.class);
+
     if(java_lang_Thread_threadLocals == null)
       error("java.lang.Thread.threadLocals not found; something is seriously wrong!");
     
@@ -254,6 +271,8 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
     catch(Exception e){
       error(e);
     }
+
+    NestedProtectionDomainCombinerException.class.getName(); // Should be loaded before switching to system classloader
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1797,15 +1816,35 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
   protected boolean isWebAppClassLoaderOrChild(ClassLoader cl) {
     final ClassLoader webAppCL = getWebApplicationClassLoader();
     // final ClassLoader webAppCL = Thread.currentThread().getContextClassLoader();
-
-    while(cl != null) {
-      if(cl == webAppCL)
-        return true;
-      
-      cl = cl.getParent();
+    
+    if(cl == webAppCL) {
+      return true;
     }
+    else { // It could be a child of the webapp classloader
+      if(java_lang_classLoader_isAncestor != null) { // Primarily use ClassLoader.isAncestor()
+        try {
+          return (Boolean) java_lang_classLoader_isAncestor.invoke(webAppCL, cl);
+        }
+        catch (Exception e) {
+          error(e);
+        }
+      }
+      
+      // We were unable to use ClassLoader.isAncestor()
+      try {
+        while(cl != null) {
+          if(cl == webAppCL)
+            return true;
+  
+          cl = cl.getParent();
+        }
+      }
+      catch (NestedProtectionDomainCombinerException e) {
+        return false; // Since we needed permission to call getParent(), it is unlikely we're a descendant
+      }
 
-    return false;
+      return false;
+    }
   }
 
   protected boolean isThreadInWebApplication(Thread thread) {
@@ -2333,6 +2372,14 @@ public class ClassLoaderLeakPreventor implements ServletContextListener {
       if(jurtThread.isAlive())
         jurtThread.stop();
     }
+  }
+  
+  /** 
+   * Exception thrown when {@link DomainCombiner#combine(ProtectionDomain[], ProtectionDomain[])} is called recursively
+   * during the execution of that same method.
+   */
+  private static class NestedProtectionDomainCombinerException extends RuntimeException {
+    
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
