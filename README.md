@@ -22,7 +22,7 @@ dependency in your `.war`:
 If you run into problems with the Servlet 3.0 module, try the Servlet 2.5 alternative below.
 Since the [Servlet spec does not guarantee the order of `ServletContainerInitializer`s](https://java.net/jira/browse/SERVLET_SPEC-79),
 it means this library may not initialize first and clean up last in case you have other Servlet 3.0 dependencies, which
-could unexpected behaviour.
+could lead to unexpected behaviour.
 
 ## Servlet 2.5 (and earlier)
 For Servlet 2.5 (and earlier) environments, you need to use a different
@@ -105,7 +105,7 @@ The context listener used in both cases has a number of settings that can be con
 
 ## Classloader leak detection / test framework
 
-The test framework has its own Maven module and its own documentation, see [classloader-leak-test-framework](classloader-leak-test-framework)
+The test framework has its own Maven module and its own documentation, see [classloader-leak-test-framework](classloader-leak-test-framework).
 
 ## Integration
 
