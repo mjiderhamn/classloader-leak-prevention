@@ -214,6 +214,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     shutdownHookCleanUp.setShutdownHookWaitMs(shutdownHookWaitMs);
     
     final StopThreadsCleanUp stopThreadsCleanUp = classLoaderLeakPreventorFactory.getCleanUp(StopThreadsCleanUp.class);
+    stopThreadsCleanUp.setStopThreads(stopThreads);
     stopThreadsCleanUp.setStopTimerThreads(stopTimerThreads);
     stopThreadsCleanUp.setThreadWaitMs(threadWaitMs);
 
