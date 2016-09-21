@@ -19,10 +19,10 @@ import static se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor.
 public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
 
   protected static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
-  
-  private final boolean stopThreads;
-  
-  /** 
+
+  protected boolean stopThreads;
+
+  /**
    * No of milliseconds to wait for threads to finish execution, before stopping them.
    */
   protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
@@ -39,6 +39,10 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
   public StopThreadsCleanUp(boolean stopThreads, boolean stopTimerThreads) {
     this.stopThreads = stopThreads;
     this.stopTimerThreads = stopTimerThreads;
+  }
+
+  public void setStopThreads(boolean stopThreads) {
+    this.stopThreads = stopThreads;
   }
 
   public void setStopTimerThreads(boolean stopTimerThreads) {
