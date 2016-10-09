@@ -104,6 +104,12 @@
       <version>2.1.19</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>9.4-1201-jdbc41</version>
+      <scope>test</scope>
+    </dependency>
     
     <!-- Example dependency for test Oracle JDBC -->
     <!--
