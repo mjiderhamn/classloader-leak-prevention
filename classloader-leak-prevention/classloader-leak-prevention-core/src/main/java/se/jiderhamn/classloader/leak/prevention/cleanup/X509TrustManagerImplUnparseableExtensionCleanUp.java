@@ -35,12 +35,14 @@ public class X509TrustManagerImplUnparseableExtensionCleanUp implements ClassLoa
           if(SUN_SECURITY_X509_X509_CERT_IMPL.equals(x509Certificate.getClass().getName())) {
             try {
               final /* sun.security.x509.CertificateExtensions*/ Object extensions = get.invoke(x509Certificate, "x509.info.extensions");
-              Map/*<String, sun.security.x509.Extension>*/ unparseableExtensions = (Map) getUnparseableExtensions.invoke(extensions);
-              for(Object unparseableExtension : unparseableExtensions.values()) {
-                if(why.get(unparseableExtension) != null) {
-                  preventor.warn(trustManager + " cached X509Certificate that had unparseable extension; removing 'why': " +
-                      x509Certificate);
-                  why.set(unparseableExtension, null);
+              if(extensions != null) {
+                Map/*<String, sun.security.x509.Extension>*/ unparseableExtensions = (Map) getUnparseableExtensions.invoke(extensions);
+                for(Object unparseableExtension : unparseableExtensions.values()) {
+                  if(why.get(unparseableExtension) != null) {
+                    preventor.warn(trustManager + " cached X509Certificate that had unparseable extension; removing 'why': " +
+                        x509Certificate);
+                    why.set(unparseableExtension, null);
+                  }
                 }
               }
             }
