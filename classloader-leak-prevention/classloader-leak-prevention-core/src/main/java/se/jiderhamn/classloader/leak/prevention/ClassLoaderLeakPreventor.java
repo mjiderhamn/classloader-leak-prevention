@@ -125,7 +125,7 @@ public class ClassLoaderLeakPreventor {
     * The motive is to avoid spawned threads from inheriting all the {@link java.security.ProtectionDomain}s of the 
     * running code, since that will include the web app classloader.
     */
-   protected AccessControlContext createAccessControlContext() {
+   public AccessControlContext createAccessControlContext() {
      try { // Try the normal way
        return new AccessControlContext(NO_DOMAINS_ACCESS_CONTROL_CONTEXT, domainCombiner);
      }
@@ -183,7 +183,7 @@ public class ClassLoaderLeakPreventor {
    * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
    * and any parents or privilegedContext thereof.
    */
-  protected void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
+  public void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
     if(accessControlContext != null && java_security_AccessControlContext$combiner != null) {
       if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
         warn(AccessControlContext.class.getSimpleName() + " of thread " + thread + " used custom combiner - unsetting");

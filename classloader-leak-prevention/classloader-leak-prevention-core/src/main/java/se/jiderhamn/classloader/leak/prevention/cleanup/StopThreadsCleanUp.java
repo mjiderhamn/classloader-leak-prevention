@@ -2,6 +2,7 @@ package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.security.AccessControlContext;
 import java.util.List;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -135,7 +136,31 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
         else if(thread.isAlive()) { // Non-system, running in web app
         
           if("java.util.TimerThread".equals(thread.getClass().getName())) {
-            if(stopTimerThreads) {
+            if(thread.getName() != null && thread.getName().startsWith("PostgreSQL-JDBC-SharedTimer-")) { // Postgresql JDBC timer thread
+              // Replace contextClassLoader, if needed
+              if(preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
+                final Class<?> postgresqlDriver = preventor.findClass("org.postgresql.Driver");
+                final ClassLoader postgresqlCL = (postgresqlDriver != null && ! preventor.isLoadedByClassLoader(postgresqlDriver)) ?
+                    postgresqlDriver.getClassLoader() : // Postgresql driver loaded by other classloader than we want to protect
+                    preventor.getLeakSafeClassLoader();
+                thread.setContextClassLoader(postgresqlCL);
+                preventor.warn("Changing contextClassLoader of " + thread + " to " + postgresqlCL);
+              }
+
+              // Replace AccessControlContext
+              final Field inheritedAccessControlContext = preventor.findField(Thread.class, "inheritedAccessControlContext");
+              if(inheritedAccessControlContext != null) {
+                try {
+                  final AccessControlContext acc = preventor.createAccessControlContext();
+                  inheritedAccessControlContext.set(thread, acc);
+                  preventor.removeDomainCombiner(thread, acc);
+                }
+                catch (Exception e) {
+                  preventor.error(e);
+                }
+              }
+            }
+            else if(stopTimerThreads) {
               preventor.warn("Stopping Timer thread '" + thread.getName() + "' running in classloader.");
               stopTimerThread(preventor, thread);
             }

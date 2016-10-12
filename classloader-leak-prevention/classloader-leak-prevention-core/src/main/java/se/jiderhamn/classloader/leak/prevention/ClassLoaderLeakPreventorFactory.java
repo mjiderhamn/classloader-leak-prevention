@@ -84,7 +84,6 @@ public class ClassLoaderLeakPreventorFactory {
     this.addPreInitiator(new Java2dDisposerInitiator());
     this.addPreInitiator(new SunGCInitiator());
     this.addPreInitiator(new OracleJdbcThreadInitiator());
-    this.addPreInitiator(new PostgresqlJdbcThreadInitiator());
 
     this.addCleanUp(new BeanIntrospectorCleanUp());
     
