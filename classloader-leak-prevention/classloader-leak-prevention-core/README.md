@@ -58,6 +58,6 @@ The module is available in Maven as
 <dependency>
   <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
   <artifactId>classloader-leak-prevention-core</artifactId>
-  <version>2.0.2</version>
+  <version>2.1.0</version>
 </dependency>
 ```

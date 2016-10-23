@@ -15,7 +15,7 @@ dependency in your `.war`:
 <dependency>
   <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
   <artifactId>classloader-leak-prevention-servlet3</artifactId>
-  <version>2.0.2</version>
+  <version>2.1.0</version>
 </dependency>
 ```
 
@@ -31,7 +31,7 @@ Maven dependency (notice the difference in `artifactId`):
 <dependency>
   <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
   <artifactId>classloader-leak-prevention-servlet</artifactId>
-  <version>2.0.2</version>
+  <version>2.1.0</version>
 </dependency>
 ```
 
