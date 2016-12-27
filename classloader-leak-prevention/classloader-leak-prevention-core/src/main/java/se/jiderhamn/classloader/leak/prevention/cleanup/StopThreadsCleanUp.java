@@ -193,7 +193,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
               if(waitForThreads) {
                 preventor.warn("Thread " + displayString + " running in protected ClassLoader; waiting " + threadWaitMs);
-                preventor.waitForThread(thread, threadWaitMs);
+                preventor.waitForThread(thread, threadWaitMs, false /* No interrupt */);
               }
               
               if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
@@ -207,7 +207,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
               preventor.warn("Stopping Thread " + displayString + " running in protected ClassLoader " + waitString);
 
-              preventor.waitForThread(thread, threadWaitMs);
+              preventor.waitForThread(thread, threadWaitMs, true /* Interrupt if needed */);
 
               // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
               // In this case however, the alternative is a classloader leak, which may or may not be considered worse.

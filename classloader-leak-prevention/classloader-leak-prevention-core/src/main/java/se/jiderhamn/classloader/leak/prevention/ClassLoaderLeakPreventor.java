@@ -304,14 +304,17 @@ public class ClassLoaderLeakPreventor {
    * executing. 
    * @param thread The thread to wake up and wait for
    * @param waitMs The no of milliseconds to wait. If <= 0 this method does nothing.
+   * @param interrupt Should {@link Thread#interrupt()} be called first, to make thread stop sleep(), wait() or join()?               
    */
-  public void waitForThread(Thread thread, long waitMs) {
+  public void waitForThread(Thread thread, long waitMs, boolean interrupt) {
     if(waitMs > 0) {
-      try {
-        thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
-      }
-      catch (SecurityException e) {
-        error(e);
+      if(interrupt) {
+        try {
+          thread.interrupt(); // Make Thread stop waiting in sleep(), wait() or join()
+        }
+        catch (SecurityException e) {
+          error(e);
+        }
       }
 
       try {
