@@ -326,6 +326,22 @@ public class ClassLoaderLeakPreventor {
     }
   }
   
+  /** Get current stack trace or provided thread as string. Returns {@code "unavailable"} if stack trace could not be acquired. */
+  public String getStackTrace(Thread thread) {
+    try {
+      final StringBuilder output = new StringBuilder();
+      for(StackTraceElement stackTraceElement : thread.getStackTrace()) {
+        // if(output.length() > 0) // Except first
+          output.append("\n\tat ");
+        output.append(stackTraceElement.toString());
+      }
+      return output.toString().trim(); // 
+    }
+    catch (Throwable t) { // SecurityException
+      return "unavailable";
+    }
+  }
+  
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   public <E> E getStaticFieldValue(Class<?> clazz, String fieldName) {

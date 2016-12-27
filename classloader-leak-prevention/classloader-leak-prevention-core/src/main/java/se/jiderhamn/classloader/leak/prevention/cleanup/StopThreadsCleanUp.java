@@ -161,11 +161,13 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               }
             }
             else if(stopTimerThreads) {
-              preventor.warn("Stopping Timer thread '" + thread.getName() + "' running in classloader.");
+              preventor.warn("Stopping Timer thread '" + thread.getName() + "' running in protected ClassLoader. " +
+                  "Thread stack trace: " + preventor.getStackTrace(thread));
               stopTimerThread(preventor, thread);
             }
             else {
-              preventor.info("Timer thread is running in classloader, but will not be stopped");
+              preventor.info("Timer thread is running in classloader, but will not be stopped. Thread stack trace: " + 
+                  preventor.getStackTrace(thread));
             }
           }
           else {
@@ -192,20 +194,22 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
             if(! preventor.isLoadedInClassLoader(thread) && ! runnableLoadedInWebApplication) { // Not loaded in protected ClassLoader - just running there
               // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
               if(waitForThreads) {
-                preventor.warn("Thread " + displayString + " running in protected ClassLoader; waiting " + threadWaitMs);
+                preventor.warn("Thread " + displayString + " running in protected ClassLoader; waiting " + threadWaitMs + 
+                    " ms. Thread stack trace: " + preventor.getStackTrace(thread));
                 preventor.waitForThread(thread, threadWaitMs, false /* No interrupt */);
               }
               
               if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
                 preventor.warn("Thread " + displayString + (waitForThreads ? " still" : "") + 
                     " running in protected ClassLoader; changing context ClassLoader to leak safe (" + 
-                    preventor.getLeakSafeClassLoader() + ")");
+                    preventor.getLeakSafeClassLoader() + "). Thread stack trace: " + preventor.getStackTrace(thread));
                 thread.setContextClassLoader(preventor.getLeakSafeClassLoader());
               }
             }
             else if(stopThreads) { // Loaded by protected ClassLoader
               final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
-              preventor.warn("Stopping Thread " + displayString + " running in protected ClassLoader " + waitString);
+              preventor.warn("Stopping Thread " + displayString + " running in protected ClassLoader " + waitString +
+                  ". Thread stack trace: " + preventor.getStackTrace(thread));
 
               preventor.waitForThread(thread, threadWaitMs, true /* Interrupt if needed */);
 
@@ -217,7 +221,8 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               }
             }
             else {
-              preventor.warn("Thread " + displayString + " is still running in protected ClassLoader");
+              preventor.warn("Thread " + displayString + " is still running in protected ClassLoader. " +
+                  "Thread stack trace: " + preventor.getStackTrace(thread));
             }
               
           }
