@@ -28,7 +28,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
    */
   protected int threadWaitMs = THREAD_WAIT_MS_DEFAULT;
   
-  /** Should Timer threads tied to the web app classloader be forced to stop at application shutdown? */
+  /** Should Timer threads tied to the protected ClassLoader classloader be forced to stop at application shutdown? */
   protected boolean stopTimerThreads;
 
   /** Default constructor with {@link #stopThreads} = true and {@link #stopTimerThreads} = true */
@@ -122,7 +122,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
             new JURTKiller(preventor, thread).start();
           }
           else
-            preventor.warn("JURT thread " + thread.getName() + " is still running in web app");
+            preventor.warn("JURT thread " + thread.getName() + " is still running in protected ClassLoader");
         }
         else if(thread.getThreadGroup() != null && 
            ("system".equals(thread.getThreadGroup().getName()) ||  // System thread
@@ -133,7 +133,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
             preventor.debug("Changed contextClassLoader of HTTP keep alive thread");
           }
         }
-        else if(thread.isAlive()) { // Non-system, running in web app
+        else if(thread.isAlive()) { // Non-system, running in protected ClassLoader
         
           if("java.util.TimerThread".equals(thread.getClass().getName())) {
             if(thread.getName() != null && thread.getName().startsWith("PostgreSQL-JDBC-SharedTimer-")) { // Postgresql JDBC timer thread
@@ -189,22 +189,23 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
 
             final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
 
-            if(! preventor.isLoadedInClassLoader(thread) && ! runnableLoadedInWebApplication) { // Not loaded in web app - just running there
+            if(! preventor.isLoadedInClassLoader(thread) && ! runnableLoadedInWebApplication) { // Not loaded in protected ClassLoader - just running there
               // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
               if(waitForThreads) {
-                preventor.warn("Thread " + displayString + " running in web app; waiting " + threadWaitMs);
+                preventor.warn("Thread " + displayString + " running in protected ClassLoader; waiting " + threadWaitMs);
                 preventor.waitForThread(thread, threadWaitMs);
               }
               
               if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
                 preventor.warn("Thread " + displayString + (waitForThreads ? " still" : "") + 
-                    " running in web app; changing context classloader to system classloader");
-                thread.setContextClassLoader(ClassLoader.getSystemClassLoader());
+                    " running in protected ClassLoader; changing context ClassLoader to leak safe (" + 
+                    preventor.getLeakSafeClassLoader() + ")");
+                thread.setContextClassLoader(preventor.getLeakSafeClassLoader());
               }
             }
-            else if(stopThreads) { // Loaded by web app
+            else if(stopThreads) { // Loaded by protected ClassLoader
               final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
-              preventor.warn("Stopping Thread " + displayString + " running in web app " + waitString);
+              preventor.warn("Stopping Thread " + displayString + " running in protected ClassLoader " + waitString);
 
               preventor.waitForThread(thread, threadWaitMs);
 
@@ -216,7 +217,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               }
             }
             else {
-              preventor.warn("Thread " + displayString + " is still running in web app");
+              preventor.warn("Thread " + displayString + " is still running in protected ClassLoader");
             }
               
           }
@@ -260,8 +261,8 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
   
   /** 
    * Inner class with the sole task of killing JURT finalizer thread after it is done processing jobs. 
-   * We need to postpone the stopping of this thread, since more Jobs may in theory be add()ed when this web application
-   * instance is closing down and being garbage collected.
+   * We need to postpone the stopping of this thread, since more Jobs may in theory be add()ed when the protected 
+   * ClassLoader is closing down and being garbage collected.
    * See https://issues.apache.org/ooo/show_bug.cgi?id=122517
    */
   protected class JURTKiller extends Thread {
