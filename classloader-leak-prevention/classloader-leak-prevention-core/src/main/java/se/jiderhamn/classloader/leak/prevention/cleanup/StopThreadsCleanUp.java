@@ -185,22 +185,34 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
 
             // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
             if(workerClass != null && workerClass.isInstance(runnable)) {
-              if(stopThreads) {
-                try {
-                  // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
-                  final Field workerExecutor = preventor.findField(workerClass, "this$0");
-                  final ThreadPoolExecutor executor = preventor.getFieldValue(workerExecutor, runnable);
-                  preventor.warn("Shutting down " + ThreadPoolExecutor.class.getName() + " of type " + executor.getClass().getName() + 
-                      " running within the ClassLoader.");
-                  // TODO #29 Only if loaded in ClassLoader (incl ThreadFactory). Especially avoid org.apache.tomcat.util.threads.ThreadPoolExecutor
-                  executor.shutdownNow();
-                }
-                catch (Exception ex) {
-                  preventor.error(ex);
+              try {
+                // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
+                final Field workerExecutor = preventor.findField(workerClass, "this$0");
+                final ThreadPoolExecutor executor = preventor.getFieldValue(workerExecutor, runnable);
+                if(executor != null) {
+                  if("org.apache.tomcat.util.threads.ThreadPoolExecutor".equals(executor.getClass().getName())) {
+                    // Tomcat pooled thread
+                    preventor.debug(displayString + " is worker of " + executor.getClass().getName());
+                  }
+                  else if(preventor.isLoadedInClassLoader(executor) || preventor.isLoadedInClassLoader(executor.getThreadFactory())) {
+                    if(stopThreads) {
+                      preventor.warn("Shutting down ThreadPoolExecutor of type " + executor.getClass().getName());
+                      executor.shutdownNow();
+                    }
+                    else {
+                      preventor.warn("ThreadPoolExecutor of type " + executor.getClass().getName() +
+                          " should be shut down.");
+                    }
+                  }
+                  else {
+                    preventor.info(displayString + " is a ThreadPoolExecutor.Worker of " + executor.getClass().getName() +
+                        " but found no reason to shut down ThreadPoolExecutor.");
+                  }
                 }
               }
-              else 
-                preventor.info(ThreadPoolExecutor.class.getName() + " running within the classloader will not be shut down.");
+              catch (Exception ex) {
+                preventor.error(ex);
+              }
             }
 
             if(! threadLoadedByClassLoader && ! runnableLoadedByClassLoader && ! threadGroupLoadedByClassLoader) { // Not loaded in protected ClassLoader - just running there
