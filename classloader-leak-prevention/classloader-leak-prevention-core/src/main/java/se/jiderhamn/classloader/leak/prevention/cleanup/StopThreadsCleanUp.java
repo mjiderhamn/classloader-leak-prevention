@@ -21,6 +21,12 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
 
   protected static final String JURT_ASYNCHRONOUS_FINALIZER = "com.sun.star.lib.util.AsynchronousFinalizer";
 
+  /** Thread {@link Runnable} for Sun/Oracle JRE i.e. java.lang.Thread.target */
+  private Field oracleTarget;
+  
+  /** Thread {@link Runnable} for IBM JRE i.e. java.lang.Thread.runnable */
+  private Field ibmRunnable;
+
   protected boolean stopThreads;
 
   /**
@@ -101,18 +107,18 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
    */
   protected void stopThreads(ClassLoaderLeakPreventor preventor) {
     final Class<?> workerClass = preventor.findClass("java.util.concurrent.ThreadPoolExecutor$Worker");
-    final Field oracleTarget = preventor.findField(Thread.class, "target"); // Sun/Oracle JRE
-    final Field ibmRunnable = preventor.findField(Thread.class, "runnable"); // IBM JRE
 
     final boolean waitForThreads = threadWaitMs > 0;
     for(Thread thread : preventor.getAllThreads()) {
-      final Runnable runnable = (oracleTarget != null) ? 
-          (Runnable) preventor.getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
-          (Runnable) preventor.getFieldValue(ibmRunnable, thread);   // IBM JRE
+      final Runnable runnable = getRunnable(preventor, thread);
 
-      final boolean runnableLoadedInWebApplication = preventor.isLoadedInClassLoader(runnable);
+      final boolean threadLoadedByClassLoader = preventor.isLoadedInClassLoader(thread);
+      final boolean threadGroupLoadedByClassLoader = preventor.isLoadedInClassLoader(thread.getThreadGroup());
+      final boolean runnableLoadedByClassLoader = preventor.isLoadedInClassLoader(runnable);
+      final boolean hasContextClassLoader = preventor.isClassLoaderOrChild(thread.getContextClassLoader());
       if(thread != Thread.currentThread() && // Ignore current thread
-         (preventor.isThreadInClassLoader(thread) || runnableLoadedInWebApplication)) {
+         (threadLoadedByClassLoader || threadGroupLoadedByClassLoader || hasContextClassLoader || // = preventor.isThreadInClassLoader(thread) 
+          runnableLoadedByClassLoader)) {
 
         if (thread.getClass().getName().startsWith(StopThreadsCleanUp.JURT_ASYNCHRONOUS_FINALIZER)) {
           // Note, the thread group of this thread may be "system" if it is triggered by the Garbage Collector
@@ -134,11 +140,11 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
           }
         }
         else if(thread.isAlive()) { // Non-system, running in protected ClassLoader
-        
-          if("java.util.TimerThread".equals(thread.getClass().getName())) {
+
+          if(thread.getClass().getName().startsWith("java.util.Timer")) { // Sun/Oracle = "java.util.TimerThread"; IBM = "java.util.Timer$TimerImpl"
             if(thread.getName() != null && thread.getName().startsWith("PostgreSQL-JDBC-SharedTimer-")) { // Postgresql JDBC timer thread
               // Replace contextClassLoader, if needed
-              if(preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
+              if(hasContextClassLoader) {
                 final Class<?> postgresqlDriver = preventor.findClass("org.postgresql.Driver");
                 final ClassLoader postgresqlCL = (postgresqlDriver != null && ! preventor.isLoadedByClassLoader(postgresqlDriver)) ?
                     postgresqlDriver.getClassLoader() : // Postgresql driver loaded by other classloader than we want to protect
@@ -162,23 +168,31 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
             }
             else if(stopTimerThreads) {
               preventor.warn("Stopping Timer thread '" + thread.getName() + "' running in protected ClassLoader. " +
-                  "Thread stack trace: " + preventor.getStackTrace(thread));
+                  preventor.getStackTrace(thread));
               stopTimerThread(preventor, thread);
             }
             else {
-              preventor.info("Timer thread is running in classloader, but will not be stopped. Thread stack trace: " + 
+              preventor.info("Timer thread is running in classloader, but will not be stopped. " + 
                   preventor.getStackTrace(thread));
             }
           }
           else {
+            final String displayString = "Thread '" + thread + "'" + 
+                (threadLoadedByClassLoader ? " of type " + thread.getClass().getName() + " loaded by protected ClassLoader" : "") +
+                (runnableLoadedByClassLoader ? " with Runnable of type " + runnable.getClass().getName() + " loaded by protected ClassLoader" : "") +
+                (threadGroupLoadedByClassLoader ? " with ThreadGroup of type " + thread.getThreadGroup().getClass().getName() + " loaded by protected ClassLoader" : "") +
+                (hasContextClassLoader ? " with contextClassLoader = protected ClassLoader or child" : "");
+
             // If threads is running an java.util.concurrent.ThreadPoolExecutor.Worker try shutting down the executor
             if(workerClass != null && workerClass.isInstance(runnable)) {
               if(stopThreads) {
-                preventor.warn("Shutting down " + ThreadPoolExecutor.class.getName() + " running within the classloader.");
                 try {
                   // java.util.concurrent.ThreadPoolExecutor, introduced in Java 1.5
                   final Field workerExecutor = preventor.findField(workerClass, "this$0");
                   final ThreadPoolExecutor executor = preventor.getFieldValue(workerExecutor, runnable);
+                  preventor.warn("Shutting down " + ThreadPoolExecutor.class.getName() + " of type " + executor.getClass().getName() + 
+                      " running within the ClassLoader.");
+                  // TODO #29 Only if loaded in ClassLoader (incl ThreadFactory). Especially avoid org.apache.tomcat.util.threads.ThreadPoolExecutor
                   executor.shutdownNow();
                 }
                 catch (Exception ex) {
@@ -189,46 +203,59 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
                 preventor.info(ThreadPoolExecutor.class.getName() + " running within the classloader will not be shut down.");
             }
 
-            final String displayString = "'" + thread + "' of type " + thread.getClass().getName();
-
-            if(! preventor.isLoadedInClassLoader(thread) && ! runnableLoadedInWebApplication) { // Not loaded in protected ClassLoader - just running there
+            if(! threadLoadedByClassLoader && ! runnableLoadedByClassLoader && ! threadGroupLoadedByClassLoader) { // Not loaded in protected ClassLoader - just running there
               // This would for example be the case with org.apache.tomcat.util.threads.TaskThread
               if(waitForThreads) {
-                preventor.warn("Thread " + displayString + " running in protected ClassLoader; waiting " + threadWaitMs + 
-                    " ms. Thread stack trace: " + preventor.getStackTrace(thread));
+                preventor.warn(displayString + "; waiting " + threadWaitMs + 
+                    " ms. " + preventor.getStackTrace(thread));
                 preventor.waitForThread(thread, threadWaitMs, false /* No interrupt */);
               }
               
-              if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) {
-                preventor.warn("Thread " + displayString + (waitForThreads ? " still" : "") + 
-                    " running in protected ClassLoader; changing context ClassLoader to leak safe (" + 
-                    preventor.getLeakSafeClassLoader() + "). Thread stack trace: " + preventor.getStackTrace(thread));
+              if(thread.isAlive() && hasContextClassLoader) {
+                preventor.warn(displayString + (waitForThreads ? " still" : "") + 
+                    " alive; changing context ClassLoader to leak safe (" + 
+                    preventor.getLeakSafeClassLoader() + "). " + preventor.getStackTrace(thread));
                 thread.setContextClassLoader(preventor.getLeakSafeClassLoader());
               }
             }
             else if(stopThreads) { // Loaded by protected ClassLoader
-              final String waitString = waitForThreads ? "after " + threadWaitMs + " ms " : "";
-              preventor.warn("Stopping Thread " + displayString + " running in protected ClassLoader " + waitString +
-                  ". Thread stack trace: " + preventor.getStackTrace(thread));
+              if(waitForThreads) {
+                preventor.warn("Waiting for " + displayString + " for " + threadWaitMs + " ms. " +
+                    preventor.getStackTrace(thread));
 
-              preventor.waitForThread(thread, threadWaitMs, true /* Interrupt if needed */);
+                preventor.waitForThread(thread, threadWaitMs, true /* Interrupt if needed */);
+              }
 
               // Normally threads should not be stopped (method is deprecated), since it may cause an inconsistent state.
               // In this case however, the alternative is a classloader leak, which may or may not be considered worse.
               if(thread.isAlive()) {
+                preventor.warn("Stopping " + displayString + ". " + preventor.getStackTrace(thread));
                 //noinspection deprecation
                 thread.stop();
               }
+              else {
+                preventor.info(displayString + " no longer alive - no action needed.");
+              }
             }
             else {
-              preventor.warn("Thread " + displayString + " is still running in protected ClassLoader. " +
-                  "Thread stack trace: " + preventor.getStackTrace(thread));
+              preventor.warn(displayString + " would cause leak. " + preventor.getStackTrace(thread));
             }
               
           }
         }
       }
     }
+  }
+  
+  /** Get {@link Runnable} of given thread, if any */
+  private Runnable getRunnable(ClassLoaderLeakPreventor preventor, Thread thread) {
+    if(oracleTarget == null && ibmRunnable == null) { // Not yet initialized
+      oracleTarget = preventor.findField(Thread.class, "target"); // Sun/Oracle JRE
+      ibmRunnable = preventor.findField(Thread.class, "runnable"); // IBM JRE       
+    }
+
+    return (oracleTarget != null) ? (Runnable) preventor.getFieldValue(oracleTarget, thread) : // Sun/Oracle JRE  
+        (Runnable) preventor.getFieldValue(ibmRunnable, thread);   // IBM JRE
   }
 
   protected void stopTimerThread(ClassLoaderLeakPreventor preventor, Thread thread) {

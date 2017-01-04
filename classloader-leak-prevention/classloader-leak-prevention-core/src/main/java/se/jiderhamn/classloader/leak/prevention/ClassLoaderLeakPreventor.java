@@ -329,8 +329,12 @@ public class ClassLoaderLeakPreventor {
   /** Get current stack trace or provided thread as string. Returns {@code "unavailable"} if stack trace could not be acquired. */
   public String getStackTrace(Thread thread) {
     try {
-      final StringBuilder output = new StringBuilder();
-      for(StackTraceElement stackTraceElement : thread.getStackTrace()) {
+      final StackTraceElement[] stackTrace = thread.getStackTrace();
+      if(stackTrace.length == 0)
+        return "Thread state: " + thread.getState();
+
+      final StringBuilder output = new StringBuilder("Thread stack trace: ");
+      for(StackTraceElement stackTraceElement : stackTrace) {
         // if(output.length() > 0) // Except first
           output.append("\n\tat ");
         output.append(stackTraceElement.toString());
