@@ -172,7 +172,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
               stopTimerThread(preventor, thread);
             }
             else {
-              preventor.info("Timer thread is running in classloader, but will not be stopped. " + 
+              preventor.info("Timer thread is running in protected ClassLoader, but will not be stopped. " + 
                   preventor.getStackTrace(thread));
             }
           }
@@ -223,14 +223,14 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
                 preventor.waitForThread(thread, threadWaitMs, false /* No interrupt */);
               }
               
-              if(thread.isAlive() && hasContextClassLoader) {
+              if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) { // Still running in ClassLoader
                 preventor.warn(displayString + (waitForThreads ? " still" : "") + 
                     " alive; changing context ClassLoader to leak safe (" + 
                     preventor.getLeakSafeClassLoader() + "). " + preventor.getStackTrace(thread));
                 thread.setContextClassLoader(preventor.getLeakSafeClassLoader());
               }
             }
-            else if(stopThreads) { // Loaded by protected ClassLoader
+            else if(stopThreads) { // Thread/Runnable/ThreadGroup loaded by protected ClassLoader
               if(waitForThreads) {
                 preventor.warn("Waiting for " + displayString + " for " + threadWaitMs + " ms. " +
                     preventor.getStackTrace(thread));

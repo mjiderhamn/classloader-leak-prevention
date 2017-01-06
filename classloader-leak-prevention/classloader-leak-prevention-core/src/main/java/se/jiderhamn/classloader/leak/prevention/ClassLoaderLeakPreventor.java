@@ -342,7 +342,7 @@ public class ClassLoaderLeakPreventor {
       return output.toString().trim(); // 
     }
     catch (Throwable t) { // SecurityException
-      return "unavailable";
+      return "Thread details unavailable";
     }
   }
   
