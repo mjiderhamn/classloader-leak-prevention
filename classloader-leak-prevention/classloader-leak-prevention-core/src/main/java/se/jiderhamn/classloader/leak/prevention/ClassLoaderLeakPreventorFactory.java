@@ -120,6 +120,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addCleanUp(new ThreadLocalCleanUp()); // This must be done after threads have been stopped, or new ThreadLocals may be added by those threads
     this.addCleanUp(new KeepAliveTimerCacheCleanUp());
     this.addCleanUp(new ResourceBundleCleanUp());
+    this.addCleanUp(new JDK8151486CleanUp());
     this.addCleanUp(new ApacheCommonsLoggingCleanUp()); // Do this last, in case other shutdown procedures want to log something.
     
   }
