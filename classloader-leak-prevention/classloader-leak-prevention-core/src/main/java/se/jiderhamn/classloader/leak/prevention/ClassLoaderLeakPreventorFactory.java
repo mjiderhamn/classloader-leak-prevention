@@ -82,6 +82,7 @@ public class ClassLoaderLeakPreventorFactory {
     // Load Sun specific classes that may cause leaks
     this.addPreInitiator(new LdapPoolManagerInitiator());
     this.addPreInitiator(new Java2dDisposerInitiator());
+    this.addPreInitiator(new Java2dRenderQueueInitiator());
     this.addPreInitiator(new SunGCInitiator());
     this.addPreInitiator(new OracleJdbcThreadInitiator());
 
