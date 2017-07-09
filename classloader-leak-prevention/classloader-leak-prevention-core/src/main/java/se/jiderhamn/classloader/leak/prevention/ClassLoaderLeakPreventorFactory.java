@@ -122,6 +122,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addCleanUp(new KeepAliveTimerCacheCleanUp());
     this.addCleanUp(new ResourceBundleCleanUp());
     this.addCleanUp(new JDK8151486CleanUp());
+    this.addCleanUp(new JavaUtilLoggingLevelCleanUp()); // Do this last, in case other shutdown procedures want to log something.
     this.addCleanUp(new ApacheCommonsLoggingCleanUp()); // Do this last, in case other shutdown procedures want to log something.
     
   }
