@@ -50,8 +50,6 @@
   </developers>   
 
   <properties>
-    <maven.compiler.source>1.6</maven.compiler.source>
-    <maven.compiler.target>1.6</maven.compiler.target>
     <!-- Disable strict JavaDoc checking, as per http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html -->
     <additionalparam>-Xdoclint:none</additionalparam>
   </properties>
@@ -100,8 +98,20 @@
       </plugins>
     </pluginManagement>
 
-    <!-- Since the tests may register (leaking) references in system classes, we need a new JVM for each test -->
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.6.1</version>
+        <configuration>
+          <source>1.6</source>
+          <target>1.6</target>
+          <fork>true</fork>
+          <!-- Allow compiling against com.sun.xml.internal classes -->
+          <testCompilerArgument>-XDignore.symbol.file</testCompilerArgument>
+        </configuration>
+      </plugin>
+      <!-- Since the tests may register (leaking) references in system classes, we need a new JVM for each test -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

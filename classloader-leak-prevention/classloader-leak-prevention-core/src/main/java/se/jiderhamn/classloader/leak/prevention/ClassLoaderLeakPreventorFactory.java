@@ -100,6 +100,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
     this.addCleanUp(new ThreadGroupContextCleanUp());
     this.addCleanUp(new X509TrustManagerImplUnparseableExtensionCleanUp());
+    this.addCleanUp(new SAAJEnvelopeFactoryParserPoolCleanUp());
     
     ////////////////////
     // Fix generic leaks
