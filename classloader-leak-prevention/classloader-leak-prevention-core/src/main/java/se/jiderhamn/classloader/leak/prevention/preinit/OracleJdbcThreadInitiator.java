@@ -1,7 +1,14 @@
 package se.jiderhamn.classloader.leak.prevention.preinit;
 
+import java.lang.management.ManagementFactory;
+import java.lang.reflect.Field;
+import java.util.Set;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.PreClassLoaderInitiator;
+import se.jiderhamn.classloader.leak.prevention.ReplaceDOMNormalizerSerializerAbortException;
 
 /**
  * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/8
@@ -43,6 +50,43 @@ public class OracleJdbcThreadInitiator implements PreClassLoaderInitiator {
     }
     catch (ClassNotFoundException e) {
       // Ignore silently - class not present
+    }
+
+    // Avoid stack trace with trace elements being referenced from MBean   
+    try {
+      Class.forName("oracle.jdbc.driver.OracleDriver"); // Cause oracle.jdbc.driver.OracleDiagnosabilityMBean to be registered
+      final Class<?> oracleDiagnosabilityMBeanClass = Class.forName("oracle.jdbc.driver.OracleDiagnosabilityMBean");
+      
+      final MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+      final Set<ObjectName> mBeanNames = mBeanServer.queryNames(new ObjectName("com.oracle.jdbc:type=diagnosability,*"), null);
+      for(ObjectName mBeanName : mBeanNames) {
+        final  /* oracle.jdbc.driver.OracleDiagnosabilityMBean */ Object oracleDiagnosabilityMBean = oracleDiagnosabilityMBeanClass.newInstance();
+        final /* oracle.jdbc.logging.runtime.TraceControllerImpl */ Object traceController =
+            preventor.getFieldValue(oracleDiagnosabilityMBean, "tc");
+        if(traceController != null) {
+          final Field reSuspendedField = preventor.findField(traceController.getClass(), "reSuspended");
+          if(reSuspendedField != null) {
+            final Object oldValue = reSuspendedField.get(traceController);
+            reSuspendedField.set(traceController, 
+                ReplaceDOMNormalizerSerializerAbortException.constructRuntimeExceptionWithoutStackTrace(preventor,
+                    (oldValue instanceof Exception) ? ((Exception)oldValue).getMessage() : "trace controller is currently suspended",
+                    null));
+            preventor.info("Replacing MBean " + mBeanName + " with " + reSuspendedField.getName() + " field of " +
+                traceController + " replaced to avoid backtrace references.");
+
+            // Replace MBean
+            mBeanServer.unregisterMBean(mBeanName);
+            mBeanServer.registerMBean(oracleDiagnosabilityMBean, mBeanName);
+          }
+          else
+            preventor.warn("Unable to find 'reSuspended' field of " + traceController);
+        }
+        else
+          preventor.warn("Found " + oracleDiagnosabilityMBeanClass + " but it has no 'tm' TraceController attribute");
+      }
+    }
+    catch (Exception e) {
+      // Ignore silently
     }
 
   }

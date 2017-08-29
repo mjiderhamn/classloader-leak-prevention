@@ -49,7 +49,7 @@ public class ReplaceDOMNormalizerSerializerAbortException implements PreClassLoa
 
   /** Construct a new {@link RuntimeException} without any stack trace, in order to avoid any references back to this class */
   @SuppressWarnings("WeakerAccess")
-  protected RuntimeException constructRuntimeExceptionWithoutStackTrace(ClassLoaderLeakPreventor preventor,
+  public static RuntimeException constructRuntimeExceptionWithoutStackTrace(ClassLoaderLeakPreventor preventor,
                                                                         String message, Throwable cause) {
     try {
       final Constructor<RuntimeException> constructor = 
@@ -59,7 +59,8 @@ public class ReplaceDOMNormalizerSerializerAbortException implements PreClassLoa
     }
     catch (Throwable e) { // InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException
       preventor.warn("Unable to construct RuntimeException without stack trace. The likely reason is that you are using Java <= 1.6. " +
-          "No worries, except there is one kind of leak you're not protected from (https://github.com/mjiderhamn/classloader-leak-prevention/issues/36). " + 
+          "No worries, except there might be some leaks you're not protected from (https://github.com/mjiderhamn/classloader-leak-prevention/issues/36 , " +
+          "https://github.com/mjiderhamn/classloader-leak-prevention/issues/69). " + 
           "If you are already on Java 1.7+, please report issue to developer of this library!");
       preventor.warn(e);
       return null;
