@@ -6,6 +6,7 @@ import se.jiderhamn.classloader.leak.prevention.PreClassLoaderInitiator;
 /**
  * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/8
  * and https://github.com/mjiderhamn/classloader-leak-prevention/issues/23
+ * and https://github.com/mjiderhamn/classloader-leak-prevention/issues/69
  * and http://java.jiderhamn.se/2012/02/26/classloader-leaks-v-common-mistakes-and-known-offenders/
  * @author Mattias Jiderhamn
  */
@@ -27,5 +28,22 @@ public class OracleJdbcThreadInitiator implements PreClassLoaderInitiator {
     catch (ClassNotFoundException e) {
       // Ignore silently - class not present
     }
+
+    // Cause TimerThread to be started with contextClassLoader = safe classloader   
+    try {
+      Class.forName("oracle.net.nt.TimeoutInterruptHandler");
+    }
+    catch (ClassNotFoundException e) {
+      // Ignore silently - class not present
+    }
+
+    // Cause instance to be created and in turn Timer and TimeThread to be created with contextClassLoader = safe classloader   
+    try {
+      Class.forName("oracle.jdbc.driver.NoSupportHAManager");
+    }
+    catch (ClassNotFoundException e) {
+      // Ignore silently - class not present
+    }
+
   }
 }
