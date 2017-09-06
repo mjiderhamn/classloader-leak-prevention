@@ -1,9 +1,8 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
+import java.lang.reflect.Field;
+import java.security.AccessControlContext;
+import java.util.*;
 import javax.imageio.spi.IIORegistry;
 import javax.imageio.spi.IIOServiceProvider;
 import javax.imageio.spi.ServiceRegistry;
@@ -19,7 +18,7 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 public class IIOServiceProviderCleanUp implements ClassLoaderPreMortemCleanUp {
   @Override
   public void cleanUp(final ClassLoaderLeakPreventor preventor) {
-    IIORegistry registry = IIORegistry.getDefaultInstance();
+    final IIORegistry registry = IIORegistry.getDefaultInstance();
     Iterator<Class<?>> categories = registry.getCategories();
     ServiceRegistry.Filter classLoaderFilter = new ServiceRegistry.Filter() {
       @Override
@@ -44,6 +43,26 @@ public class IIOServiceProviderCleanUp implements ClassLoaderPreMortemCleanUp {
           preventor.warn("ImageIO " + category.getSimpleName() + " service provider deregistered: "
             + serviceProvider.getDescription(Locale.ROOT));
           registry.deregisterServiceProvider(serviceProvider);
+        }
+      }
+    }
+
+    // Leak as of Java 1.8u141, see https://github.com/mjiderhamn/classloader-leak-prevention/issues/71
+    // The providers are probably registered by SunAwtAppContextInitiator
+    final Field accMapField = preventor.findFieldOfClass("javax.imageio.spi.SubRegistry", "accMap");
+    if(accMapField != null) {
+      final Field categoryMapField = preventor.findField(ServiceRegistry.class, "categoryMap");
+      if(categoryMapField != null) {
+        final Map categoryMap = preventor.getFieldValue(categoryMapField, registry);
+        if(categoryMap != null) {
+          for(/*SubRegistry*/ Object subRegistry : categoryMap.values()) {
+            final Map<Class<?>, AccessControlContext> accMap = preventor.getFieldValue(accMapField, subRegistry);
+            if(accMap != null) {
+              for(AccessControlContext acc : accMap.values()) {
+                preventor.removeDomainCombiner(IIORegistry.class.getName(), acc);
+              }
+            }
+          }
         }
       }
     }

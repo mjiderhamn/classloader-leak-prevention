@@ -159,7 +159,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
                 try {
                   final AccessControlContext acc = preventor.createAccessControlContext();
                   inheritedAccessControlContext.set(thread, acc);
-                  preventor.removeDomainCombiner(thread, acc);
+                  preventor.removeDomainCombiner("thread " + thread, acc);
                 }
                 catch (Exception e) {
                   preventor.error(e);

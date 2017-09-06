@@ -183,10 +183,19 @@ public class ClassLoaderLeakPreventor {
    * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
    * and any parents or privilegedContext thereof.
    */
+  @Deprecated
   public void removeDomainCombiner(Thread thread, AccessControlContext accessControlContext) {
+    removeDomainCombiner("thread " + thread, accessControlContext);
+  }
+  
+  /** 
+   * Recursively unset our custom {@link DomainCombiner} (loaded in the web app) from the {@link AccessControlContext} 
+   * and any parents or privilegedContext thereof.
+   */
+  public void removeDomainCombiner(String owner, AccessControlContext accessControlContext) {
     if(accessControlContext != null && java_security_AccessControlContext$combiner != null) {
       if(getFieldValue(java_security_AccessControlContext$combiner, accessControlContext) == this.domainCombiner) {
-        warn(AccessControlContext.class.getSimpleName() + " of thread " + thread + " used custom combiner - unsetting");
+        warn(AccessControlContext.class.getSimpleName() + " of " + owner + " used custom combiner - unsetting");
         try {
           java_security_AccessControlContext$combiner.set(accessControlContext, null);
         }
@@ -197,10 +206,10 @@ public class ClassLoaderLeakPreventor {
       
       // Recurse
       if(java_security_AccessControlContext$parent != null) {
-        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$parent, accessControlContext));
+        removeDomainCombiner(owner, (AccessControlContext) getFieldValue(java_security_AccessControlContext$parent, accessControlContext));
       }
       if(java_security_AccessControlContext$privilegedContext != null) {
-        removeDomainCombiner(thread, (AccessControlContext) getFieldValue(java_security_AccessControlContext$privilegedContext, accessControlContext));
+        removeDomainCombiner(owner, (AccessControlContext) getFieldValue(java_security_AccessControlContext$privilegedContext, accessControlContext));
       }
     }
   }
@@ -218,7 +227,7 @@ public class ClassLoaderLeakPreventor {
         // Check if threads have been started in doInLeakSafeClassLoader() and need fixed ACC
         for(Thread thread : getAllThreads()) { // (We actually only need to do this for threads not running in web app, as per StopThreadsCleanUp) 
           final AccessControlContext accessControlContext = getFieldValue(inheritedAccessControlContext, thread);
-          removeDomainCombiner(thread, accessControlContext);
+          removeDomainCombiner("thread " + thread , accessControlContext);
         }
       }
       
