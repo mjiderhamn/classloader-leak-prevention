@@ -16,7 +16,7 @@ public class MXBeanNotificationListenersCleanUpTest extends ClassLoaderPreMortem
         new CustomNotificationListener(), null, null);
   }
 
-  private static class CustomNotificationListener implements NotificationListener {
+  static class CustomNotificationListener implements NotificationListener {
     @Override
     public void handleNotification(Notification notification, Object handback) {
       

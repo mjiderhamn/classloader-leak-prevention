@@ -28,6 +28,8 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
       final Field listenerField = preventor.findField(listenerInfoClass, "listener");
       final Field filterField = preventor.findField(listenerInfoClass, "filter");
       final Field handbackField = preventor.findField(listenerInfoClass, "handback");
+      
+      final Class<?> listenerWrapperClass = preventor.findClass("com.sun.jmx.interceptor.DefaultMBeanServerInterceptor$ListenerWrapper");
 
       final boolean canProcessNotificationEmitterSupport =
           listenerListField != null && listenerInfoClass != null && 
@@ -58,11 +60,13 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
                   if(listenerList != null) {
                     for(Object listenerInfo : listenerList) { // Loop all listeners
                       final NotificationListener listener = preventor.getFieldValue(listenerField, listenerInfo);
+                      final NotificationListener rawListener = unwrap(preventor, listenerWrapperClass, listener);
                       final NotificationFilter filter = preventor.getFieldValue(filterField, listenerInfo);
                       final Object handback = preventor.getFieldValue(handbackField, listenerInfo);
 
-                      if(preventor.isLoadedInClassLoader(listener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
-                        preventor.warn("Listener '" + listener + "' (or its filter or handback) of MXBean " + mxBean + 
+                      if(preventor.isLoadedInClassLoader(rawListener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
+                        preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + 
+                            "' (or its filter or handback) of MXBean " + mxBean + 
                             " of PlatformComponent " + platformComponent + " was loaded in protected ClassLoader; removing");
                         // This is safe, as the implementation (as of this writing) works with a copy, not altering the original
                         try {
@@ -76,7 +80,7 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
                   }
                 }
                 else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
-                  unregisterNotificationListeners(preventor, (NotificationBroadcasterSupport) mxBean);
+                  unregisterNotificationListeners(preventor, (NotificationBroadcasterSupport) mxBean, listenerWrapperClass);
                 }
               }
             }
@@ -90,7 +94,8 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
    * Unregister {@link NotificationListener}s from subclass of {@link NotificationBroadcasterSupport}, if listener,
    * filter or handback is loaded by the protected ClassLoader.
    */
-  protected void unregisterNotificationListeners(ClassLoaderLeakPreventor preventor, NotificationBroadcasterSupport mBean) {
+  protected void unregisterNotificationListeners(ClassLoaderLeakPreventor preventor, NotificationBroadcasterSupport mBean,
+                                                 final Class<?> listenerWrapperClass) {
     final Field listenerListField = preventor.findField(NotificationBroadcasterSupport.class, "listenerList");
     if(listenerListField != null) {
       final Class<?> listenerInfoClass = preventor.findClass("javax.management.NotificationBroadcasterSupport$ListenerInfo");
@@ -104,11 +109,13 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
         final Field handbackField = preventor.findField(listenerInfoClass, "handback");
         for(Object listenerInfo : listenerList) {
           final NotificationListener listener = preventor.getFieldValue(listenerField, listenerInfo);
+          final NotificationListener rawListener = unwrap(preventor, listenerWrapperClass, listener);
           final NotificationFilter filter = preventor.getFieldValue(filterField, listenerInfo);
           final Object handback = preventor.getFieldValue(handbackField, listenerInfo);
-
-          if(preventor.isLoadedInClassLoader(listener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
-            preventor.warn("Listener '" + listener + "' (or its filter or handback) of MBean " + mBean + 
+          
+          if(preventor.isLoadedInClassLoader(rawListener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
+            preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + 
+                "' (or its filter or handback) of MBean " + mBean + 
                 " was loaded in protected ClassLoader; removing");
             // This is safe, as the implementation works with a copy, not altering the original
             try {
@@ -121,6 +128,15 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
         }
       }
     }
+  }
+
+  /** Unwrap {@link NotificationListener} wrapped by {@link com.sun.jmx.interceptor.DefaultMBeanServerInterceptor.ListenerWrapper} */
+  private NotificationListener unwrap(ClassLoaderLeakPreventor preventor, Class<?> listenerWrapperClass, NotificationListener listener) {
+    if(listenerWrapperClass != null && listenerWrapperClass.isInstance(listener)) {
+      return preventor.getFieldValue(listener, "listener"); // Unwrap
+    }
+    else 
+      return listener;
   }
 
 }
