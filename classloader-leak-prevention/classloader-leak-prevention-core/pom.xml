@@ -110,6 +110,13 @@
       <version>9.4-1201-jdbc41</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test that MOXy leaks are prevented -->
+    <dependency>
+      <groupId>org.eclipse.persistence</groupId>
+      <artifactId>org.eclipse.persistence.moxy</artifactId>
+      <version>2.7.0</version>
+      <scope>test</scope>
+    </dependency>
     
     <!-- Example dependency for test Oracle JDBC -->
     <!--
