@@ -12,9 +12,10 @@ import se.jiderhamn.classloader.PackagesLoadedOutsideClassLoader;
 public class MoxyCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<MoxyCleanUp> {
   @Override
   protected void triggerLeak() throws Exception {
-    // final ClassLoader leakSafeCL = Thread.currentThread().getContextClassLoader().getParent();
+     final ClassLoader leakSafeCL = Thread.currentThread().getContextClassLoader().getParent();
     // Class.forName("org.eclipse.persistence.jaxb.javamodel.Helper", true, leakSafeCL);
     // Class.forName("org.eclipse.persistence.jaxb.compiler.Property", true, leakSafeCL);
+    Class.forName("org.eclipse.persistence.jaxb.compiler.CompilerHelper", true, leakSafeCL);
     
     CompilerHelper.getXmlBindingsModelContext();
     
