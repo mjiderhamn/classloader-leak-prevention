@@ -91,6 +91,7 @@ public class ClassLoaderLeakPreventorFactory {
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     this.addCleanUp(new BeanELResolverCleanUp());
     this.addCleanUp(new BeanValidationCleanUp());
+    this.addCleanUp(new JacksonCleanUp());
     this.addCleanUp(new JavaServerFaces2746CleanUp());
     this.addCleanUp(new GeoToolsCleanUp());
     // Can we do anything about Google Guice ?

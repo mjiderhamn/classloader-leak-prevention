@@ -117,6 +117,13 @@
       <version>2.7.0</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test that Jackson leaks are prevented -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.9.2</version>
+      <scope>test</scope>
+    </dependency>
     
     <!-- Example dependency for test Oracle JDBC -->
     <!--
