@@ -1,6 +1,7 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.reflect.Method;
+import java.util.Map;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
@@ -16,11 +17,22 @@ public class JacksonCleanUp implements ClassLoaderPreMortemCleanUp {
     if(typeFactoryClass != null && ! preventor.isLoadedInClassLoader(typeFactoryClass)) {
       try {
         final Method defaultInstance = preventor.findMethod(typeFactoryClass, "defaultInstance");
-        final Method clearCache = preventor.findMethod(typeFactoryClass, "clearCache");
-        if(defaultInstance != null && clearCache != null) {
+        if(defaultInstance != null) {
           final Object defaultTypeFactory = defaultInstance.invoke(null);
           if(defaultTypeFactory != null) {
-            clearCache.invoke(defaultTypeFactory);
+            final Method clearCache = preventor.findMethod(typeFactoryClass, "clearCache");
+            if(clearCache != null) { 
+              clearCache.invoke(defaultTypeFactory);
+            }
+            else { // Version < 2.4.1
+              final Object typeCache = preventor.getFieldValue(defaultTypeFactory, "_typeCache");
+              if(typeCache instanceof Map) {
+                //noinspection SynchronizationOnLocalVariableOrMethodParameter
+                synchronized (typeCache) {
+                  ((Map) typeCache).clear();
+                }
+              }
+            }
           }
         }
       }
