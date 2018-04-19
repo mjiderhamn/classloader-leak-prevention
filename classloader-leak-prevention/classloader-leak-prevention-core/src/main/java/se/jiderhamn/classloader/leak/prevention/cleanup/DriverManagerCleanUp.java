@@ -1,6 +1,5 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
-import java.lang.reflect.Field;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -49,18 +48,12 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
      * @param preventor
      * @return
      */
-    @SuppressWarnings("unchecked")
     public java.util.Enumeration<Driver> getAllDrivers(ClassLoaderLeakPreventor preventor) {
         java.util.Vector<Driver> result = new java.util.Vector<Driver>();
         try {
-            Field registeredDrivers = DriverManager.class.getDeclaredField("registeredDrivers");
-            registeredDrivers.setAccessible(true);
-            CopyOnWriteArrayList<Object> driverinfos = (CopyOnWriteArrayList<Object>) registeredDrivers.get(null);
-
+            CopyOnWriteArrayList<?> driverinfos = preventor.getStaticFieldValue(DriverManager.class, "registeredDrivers");
             for (Object driverinfo : driverinfos) {
-                Field FDriver = driverinfo.getClass().getDeclaredField("driver");
-                FDriver.setAccessible(true);
-                Driver driver = (Driver) FDriver.get(driverinfo);
+                Driver driver = (Driver) preventor.getFieldValue(driverinfo, "driver");
                 result.addElement(driver);
             }
         }
