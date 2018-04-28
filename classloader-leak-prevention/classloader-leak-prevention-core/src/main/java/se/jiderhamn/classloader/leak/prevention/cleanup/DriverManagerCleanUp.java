@@ -1,10 +1,14 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.sql.Driver;
+import java.sql.DriverAction;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Vector;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
@@ -24,8 +28,8 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
       if (preventor.isLoadedInClassLoader(driver)) {
         try {
           preventor.warn("JDBC driver loaded by protected ClassLoader deregistered: " + driver.getClass());
-          DriverManager.deregisterDriver(driver);
-        } catch (SQLException e) {
+  		  deregisterDriver(preventor, driver);
+        } catch (Exception e) {
           preventor.error(e);
         }
       }
@@ -56,5 +60,31 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
       return DriverManager.getDrivers();
     }
     return result.elements();
+  }
+
+  private void deregisterDriver(ClassLoaderLeakPreventor preventor, final Driver driver) throws Exception {
+	synchronized (DriverManager.class) {
+	  if (driver == null) {
+		return;
+	  }
+	  try {
+		List<?> registeredDrivers = preventor.getStaticFieldValue(DriverManager.class, "registeredDrivers");
+		Class<?> innerClass = Class.forName("java.sql.DriverInfo");
+		Constructor<?> ctor = innerClass.getDeclaredConstructor(Driver.class, DriverAction.class);
+		ctor.setAccessible(true);
+		Object innerInstance = ctor.newInstance(driver, null);
+		Object di = registeredDrivers.get(registeredDrivers.indexOf(innerInstance));
+		Method actionMethod = innerClass.getDeclaredMethod("action", new Class[0]);
+		actionMethod.setAccessible(true);
+		DriverAction da = (DriverAction) actionMethod.invoke(di);
+		if (da != null) {
+		  da.deregister();
+		}
+		registeredDrivers.remove(innerInstance);
+	  } catch (Exception e) {
+		preventor.error("deregisterDriver error");
+		throw e;
+	  }
+	}
   }
 }
