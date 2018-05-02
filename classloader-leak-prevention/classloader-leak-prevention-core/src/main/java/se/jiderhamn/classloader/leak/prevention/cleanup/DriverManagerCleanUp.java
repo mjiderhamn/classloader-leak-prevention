@@ -46,7 +46,7 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
   public Enumeration<Driver> getAllDrivers(ClassLoaderLeakPreventor preventor) {
     Vector<Driver> result = new java.util.Vector<Driver>();
     try {
-      ArrayList<?> driverinfos = preventor.getStaticFieldValue(DriverManager.class, "registeredDrivers");
+      List<?> driverinfos = preventor.getStaticFieldValue(DriverManager.class, "registeredDrivers");
       for (Object driverinfo : driverinfos) {
         Driver driver = (Driver) preventor.getFieldValue(driverinfo, "driver");
         if (driver == null)
