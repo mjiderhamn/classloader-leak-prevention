@@ -5,7 +5,6 @@ import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.sql.DriverAction;
 import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
@@ -37,7 +36,7 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
   }
 
   /**
-   * Add getAllDrivers method. DriverManager.getDrivers() only return the drivers
+   * DriverManager.getDrivers() only return the drivers
    * which be load by caller(DriverManagerCleanUp.class). For many scenarios the
    * caller is not the same classloader which load the jdbc drivers.
    * @param preventor
@@ -62,6 +61,9 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
     return result.elements();
   }
 
+  /**
+   *Do the work as DriverManager.deregisterDriver,but this method don't check the Security of the caller's Classloader
+   */
   private void deregisterDriver(ClassLoaderLeakPreventor preventor, final Driver driver) throws Exception {
 	synchronized (DriverManager.class) {
 	  if (driver == null) {
