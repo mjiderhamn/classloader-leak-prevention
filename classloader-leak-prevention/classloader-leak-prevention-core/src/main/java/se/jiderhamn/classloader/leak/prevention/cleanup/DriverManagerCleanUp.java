@@ -38,8 +38,6 @@ public class DriverManagerCleanUp implements ClassLoaderPreMortemCleanUp {
    * DriverManager.getDrivers() only return the drivers which be load by
    * caller(DriverManagerCleanUp.class). For many scenarios the caller is not the
    * same classloader which load the jdbc drivers.
-   *
-   * @param preventor
    * @return All drivers in DriverManager's registeredDrivers field,or
    *         DriverManager.getDrivers() if exception occurred
    */
