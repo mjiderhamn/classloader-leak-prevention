@@ -22,8 +22,9 @@ public class SunGCInitiator implements PreClassLoaderInitiator {
   @Override
   public void doOutsideClassLoader(ClassLoaderLeakPreventor preventor) {
     try {
-      Class<?> gcClass = Class.forName("sun.misc.GC");
+      Class<?> gcClass = this.getGCClass();
       final Method requestLatency = gcClass.getDeclaredMethod("requestLatency", long.class);
+      requestLatency.setAccessible(true);
       requestLatency.invoke(null, Long.valueOf(Long.MAX_VALUE - 1));
     }
     catch (ClassNotFoundException cnfex) {
@@ -39,6 +40,14 @@ public class SunGCInitiator implements PreClassLoaderInitiator {
     catch (InvocationTargetException itex) {
       preventor.error(itex);
     }
-    
+  }
+
+  private Class<?> getGCClass() throws ClassNotFoundException {
+    try {
+      return Class.forName("sun.misc.GC");
+    } catch (ClassNotFoundException cnfex) {
+      // Try Jre 9 classpath
+      return Class.forName("sun.rmi.transport.GC");
+    }
   }
 }
