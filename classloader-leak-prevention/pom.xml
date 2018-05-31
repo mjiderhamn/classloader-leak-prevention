@@ -3,11 +3,7 @@
 
   <groupId>se.jiderhamn.classloader-leak-prevention</groupId>
   <artifactId>classloader-leak-prevention-parent</artifactId>
-<<<<<<< master
   <version>2.5.1-SNAPSHOT</version>
-=======
-  <version>2.6.2-SNAPSHOT</version>
->>>>>>> 5cf9a75 [maven-release-plugin] prepare for next development iteration
   <packaging>pom</packaging>
   <name>ClassLoader Leak Prevention library parent</name>
   <description>Library that prevents ClassLoader leaks / java.lang.OutOfMemoryError: PermGen space</description>
