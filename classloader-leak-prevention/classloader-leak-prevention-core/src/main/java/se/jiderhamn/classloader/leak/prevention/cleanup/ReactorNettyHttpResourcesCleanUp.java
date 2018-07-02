@@ -13,7 +13,7 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 public class ReactorNettyHttpResourcesCleanUp implements ClassLoaderPreMortemCleanUp {
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
-    final Class<?> clazz = preventor.findClass("reactor.netty.http.HttpResources");
+    final Class<?> clazz = preventor.findClass("reactor.ipc.netty.http.HttpResources");
     if(preventor.isLoadedByClassLoader(clazz)) {
       final Method shutdown = preventor.findMethod(clazz, "shutdown");
       if(shutdown != null) {
