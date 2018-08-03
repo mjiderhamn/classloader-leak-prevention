@@ -91,6 +91,7 @@ public class ClassLoaderLeakPreventorFactory {
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     this.addCleanUp(new BeanELResolverCleanUp());
     this.addCleanUp(new BeanValidationCleanUp());
+    this.addCleanUp(new JacksonCleanUp());
     this.addCleanUp(new JavaServerFaces2746CleanUp());
     this.addCleanUp(new GeoToolsCleanUp());
     // Can we do anything about Google Guice ?
@@ -98,6 +99,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addCleanUp(new IntrospectionUtilsCleanUp());
     // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
     this.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
+    this.addCleanUp(new MoxyCleanUp());
     this.addCleanUp(new ThreadGroupContextCleanUp());
     this.addCleanUp(new X509TrustManagerImplUnparseableExtensionCleanUp());
     this.addCleanUp(new SAAJEnvelopeFactoryParserPoolCleanUp());
