@@ -5,8 +5,6 @@ import java.lang.reflect.Constructor;
 import javax.management.NotificationEmitter;
 import javax.management.NotificationListener;
 
-import com.sun.jmx.interceptor.DefaultMBeanServerInterceptor;
-
 /**
  * Test case for {@link MXBeanNotificationListenersCleanUp} when {@link DefaultMBeanServerInterceptor.ListenerWrapper}
  * is used.
