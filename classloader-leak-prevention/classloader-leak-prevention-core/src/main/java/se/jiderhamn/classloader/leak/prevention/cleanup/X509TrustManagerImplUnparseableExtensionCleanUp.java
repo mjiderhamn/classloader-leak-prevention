@@ -11,8 +11,8 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
 /**
- * {@link sun.security.ssl.X509TrustManagerImpl} keeps a list set of trusted certs, which may include 
- * {@link sun.security.x509.UnparseableExtension} that in turn may include an {@link Exception} with a backtrace
+ * "sun.security.ssl.X509TrustManagerImpl" keeps a list set of trusted certs, which may include 
+ * "sun.security.x509.UnparseableExtension" that in turn may include an {@link Exception} with a backtrace
  * with references to the classloader that we want to protect 
  * @author Mattias Jiderhamn
  */
