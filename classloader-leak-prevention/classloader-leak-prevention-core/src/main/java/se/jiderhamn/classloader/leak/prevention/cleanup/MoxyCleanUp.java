@@ -11,6 +11,7 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 /**
  * Cleanup for leak caused by EclipseLink MOXy
  * See https://bugs.eclipse.org/bugs/show_bug.cgi?id=529270
+ * Fixed in version 2.7.2
  * @author Mattias Jiderhamn
  */
 public class MoxyCleanUp implements ClassLoaderPreMortemCleanUp {
