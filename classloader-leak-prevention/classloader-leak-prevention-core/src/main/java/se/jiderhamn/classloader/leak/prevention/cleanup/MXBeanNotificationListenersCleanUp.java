@@ -1,6 +1,7 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.lang.management.ManagementFactory;
+import java.lang.management.PlatformManagedObject;
 import java.lang.reflect.Field;
 import java.util.List;
 import javax.management.*;
@@ -35,8 +36,8 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
       preventor.warn(
           "Unable to unregister NotificationEmitterSupport listeners, because details could not be found using reflection");
 
-    for (var platformInterface : ManagementFactory.getPlatformManagementInterfaces()) {
-      for (var mxBean : ManagementFactory.getPlatformMXBeans(platformInterface)) {
+    for (Class<? extends PlatformManagedObject> platformInterface : ManagementFactory.getPlatformManagementInterfaces()) {
+      for (Object mxBean : ManagementFactory.getPlatformMXBeans(platformInterface)) {
         if (mxBean instanceof NotificationEmitter) { // The MXBean may have NotificationListeners
           if (canProcessNotificationEmitterSupport
               && notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
