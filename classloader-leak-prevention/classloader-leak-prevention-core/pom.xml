@@ -135,7 +135,9 @@
     </dependency>
     -->
 
-    <!-- Add internal java APIs that are not available anymore in java > 8. Used for MoxyCleanUpTest -->
+    <!-- Internal APIs that have been removen in java > 8 -->
+
+    <!-- Used for MoxyCleanUpTest -->
     <dependency>
       <groupId>javax.xml.bind</groupId>
       <artifactId>jaxb-api</artifactId>
@@ -155,6 +157,13 @@
       <groupId>javax.activation</groupId>
       <artifactId>activation</artifactId>
       <version>1.1.1</version>
+    </dependency>
+
+    <!-- Used for SAAJEnvelopeFactoryParserPoolCleanUp -->
+    <dependency>
+      <groupId>com.sun.xml.messaging.saaj</groupId>
+      <artifactId>saaj-impl</artifactId>
+      <version>1.4.0</version>
     </dependency>
 
   </dependencies>
