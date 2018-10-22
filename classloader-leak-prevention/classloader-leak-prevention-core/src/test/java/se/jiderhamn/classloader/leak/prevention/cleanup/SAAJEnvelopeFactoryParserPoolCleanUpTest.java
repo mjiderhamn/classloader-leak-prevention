@@ -5,15 +5,11 @@ import javax.xml.parsers.SAXParser;
 import com.sun.org.apache.xerces.internal.xni.XNIException;
 import com.sun.org.apache.xerces.internal.xni.parser.XMLParseException;
 
-//import com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory;
-import com.sun.xml.messaging.saaj.soap.EnvelopeFactory;
-
-//import com.sun.xml.internal.messaging.saaj.util.ParserPool;
-import com.sun.xml.messaging.saaj.util.ParserPool;
-
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 import static org.junit.Assert.assertNotNull;
+
+import java.lang.reflect.Method;
 
 /**
  * Test case for {@link SAAJEnvelopeFactoryParserPoolCleanUp}
@@ -33,16 +29,27 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
     }
     */
 
+    Class<?> envelopeFactoryClass = preventor.findClass("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory");
+    if (envelopeFactoryClass == null) {
+      // We are running JDK > 8, so the internal APIs are not available anymore, so use the maven dependency
+      envelopeFactoryClass = preventor.findClass("com.sun.xml.messaging.saaj.soap.EnvelopeFactory");
+    }
+    
     final Object /* com.sun.xml.internal.messaging.saaj.soap.ContextClassloaderLocal */
-            parserPool = preventor.getStaticFieldValue(EnvelopeFactory.class, "parserPool");
-    final ParserPool currentParserPool = (ParserPool) preventor.findMethod(parserPool.getClass().getSuperclass(), "get").invoke(parserPool);
+            parserPool = preventor.getStaticFieldValue(envelopeFactoryClass, "parserPool");
+    final Object currentParserPool = preventor.findMethod(parserPool.getClass().getSuperclass(), "get").invoke(parserPool);
     assertNotNull(currentParserPool);
 
-    final SAXParser saxParser = currentParserPool.get();
+    
+    final Method getMethod = preventor.findMethod(currentParserPool.getClass(), "get");
+    final SAXParser saxParser = (SAXParser) getMethod.invoke(currentParserPool);
+    
     saxParser.setProperty("http://apache.org/xml/properties/internal/error-handler", 
         new CustomErrorHandler()); // Loaded by protected classloader
-    currentParserPool.put(saxParser);
-  }
+    
+    final Method putMethod = preventor.findMethod(currentParserPool.getClass(), "put", SAXParser.class);
+    putMethod.invoke(currentParserPool, saxParser);
+}
 
   /** Dummy XMLErrorHandler loaded by the class loader that should be garbage collected*/
   public static class CustomErrorHandler implements com.sun.org.apache.xerces.internal.xni.parser.XMLErrorHandler {
