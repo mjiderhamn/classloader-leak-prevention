@@ -135,7 +135,7 @@
     </dependency>
     -->
 
-    <!-- Internal APIs that have been removen in java > 8 -->
+    <!-- Internal APIs that have been removed from the JDK in java 11 -->
 
     <!-- Used for MoxyCleanUpTest -->
     <dependency>
