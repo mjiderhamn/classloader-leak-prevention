@@ -19,9 +19,8 @@ public class SAAJEnvelopeFactoryParserPoolCleanUp implements ClassLoaderPreMorte
     Object /*com.sun.xml.internal.messaging.saaj.soap.ContextClassloaderLocal*/
         parserPool = preventor.getStaticFieldValue("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory",
         "parserPool");
-
     if (parserPool == null) {
-      // We are running JDK > 8, so the internal APIs are not available anymore, so use the maven dependency
+      // We are running JDK 11, so the SAAJ APIs are not available in the JDK anymore, so use the maven dependency
       parserPool = preventor.getStaticFieldValue("com.sun.xml.messaging.saaj.soap.EnvelopeFactory",
           "parserPool");
     }
