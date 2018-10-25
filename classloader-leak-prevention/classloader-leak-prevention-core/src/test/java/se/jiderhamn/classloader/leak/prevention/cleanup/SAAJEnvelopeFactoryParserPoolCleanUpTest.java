@@ -6,11 +6,14 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 import static org.junit.Assert.assertNotNull;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
+//<<<<<<< HEAD
+//import java.lang.reflect.Constructor;
+//import java.lang.reflect.Field;
+//import java.lang.reflect.InvocationTargetException;
+//import java.lang.reflect.Method;
+//import java.lang.reflect.Modifier;
+//=======
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 
 /**
  * Test case for {@link SAAJEnvelopeFactoryParserPoolCleanUp}
@@ -61,6 +64,7 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
         this.getClass().getClassLoader(),
         new java.lang.Class[] { errorHandlerClass },
         new java.lang.reflect.InvocationHandler() {
+
 
         @Override
         public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) throws java.lang.Throwable {
