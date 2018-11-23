@@ -1,5 +1,6 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
 /**
@@ -16,6 +17,9 @@ public class JceSecurityCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<
       javax.crypto.Mac.getInstance("baz", myProvider);
     }
     catch (SecurityException e) { // CS:IGNORE
+    }
+    catch (NoSuchAlgorithmException e) {
+      // Custom providers seem to work different in Java 11, this still triggers the leak, even if we get this exception
     }
   }
   
