@@ -16,10 +16,8 @@ public class JceSecurityCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<
       MyProvider myProvider = new MyProvider("foo", 1.0, "bar");
       javax.crypto.Mac.getInstance("baz", myProvider);
     }
-    catch (SecurityException e) { // CS:IGNORE
-    }
-    catch (NoSuchAlgorithmException e) {
-      // Custom providers seem to work different in Java 11, this still triggers the leak, even if we get this exception
+    catch (SecurityException | NoSuchAlgorithmException e) { // CS:IGNORE
+      // Leak is triggered despite an exception being thrown
     }
   }
   
