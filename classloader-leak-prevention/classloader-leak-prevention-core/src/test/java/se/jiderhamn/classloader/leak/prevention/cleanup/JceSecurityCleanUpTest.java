@@ -16,7 +16,10 @@ public class JceSecurityCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<
       MyProvider myProvider = new MyProvider("foo", 1.0, "bar");
       javax.crypto.Mac.getInstance("baz", myProvider);
     }
-    catch (SecurityException | NoSuchAlgorithmException e) { // CS:IGNORE
+    catch (SecurityException e) { // CS:IGNORE
+      // Leak is triggered despite an exception being thrown
+    }
+    catch (NoSuchAlgorithmException e) { // CS:IGNORE
       // Leak is triggered despite an exception being thrown
     }
   }
