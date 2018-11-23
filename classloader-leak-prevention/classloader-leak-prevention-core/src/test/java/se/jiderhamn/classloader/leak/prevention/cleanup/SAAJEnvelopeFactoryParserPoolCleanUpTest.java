@@ -13,7 +13,7 @@ import static org.junit.Assert.assertNotNull;
  */
 public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<SAAJEnvelopeFactoryParserPoolCleanUp> {
 
-	@Override
+  @Override
   protected void triggerLeak() throws Exception {
     final ClassLoaderLeakPreventor preventor = getClassLoaderLeakPreventor();
 
@@ -27,7 +27,7 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
 
     Class<?> envelopeFactoryClass = preventor.findClass("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory");
     if (envelopeFactoryClass == null) {
-      // We are running JDK 11, so the SAAJ APIs are not available in the JDK anymore, so use the maven dependency
+      // Try the package for the maven dependency if the internal one is not available
       envelopeFactoryClass = preventor.findClass("com.sun.xml.messaging.saaj.soap.EnvelopeFactory");
     }
     
@@ -45,7 +45,7 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
     putMethod.invoke(currentParserPool, saxParser);
   }
 
-	/*
+  /*
    * Create a dummy XMLErrorHandler to be loaded by the classloader that sould be garbage collected
    * Create using reflection, since the type is not accessible in newer Java Versions
    */
