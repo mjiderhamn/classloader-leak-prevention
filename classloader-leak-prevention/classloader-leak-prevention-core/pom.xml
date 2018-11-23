@@ -141,6 +141,7 @@
       <groupId>com.sun.xml.messaging.saaj</groupId>
       <artifactId>saaj-impl</artifactId>
       <version>1.4.0</version>
+      <scope>provided</scope>
     </dependency>
     
   </dependencies>
