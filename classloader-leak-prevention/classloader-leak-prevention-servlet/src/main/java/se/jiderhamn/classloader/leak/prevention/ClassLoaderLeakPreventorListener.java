@@ -202,7 +202,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     info("  shutdownHookWaitMs = " + shutdownHookWaitMs + " ms");
     
     // Create factory with default PreClassLoaderInitiators and ClassLoaderPreMortemCleanUps
-    final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = new ClassLoaderLeakPreventorFactory();
+    final ClassLoaderLeakPreventorFactory classLoaderLeakPreventorFactory = createClassLoaderLeakPreventorFactory();
     
     // Configure default PreClassLoaderInitiators 
     if(! startOracleTimeoutThread)
@@ -227,7 +227,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
   @Override
   public void contextDestroyed(ServletContextEvent servletContextEvent) {
 
-    info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" + 
+    info(getClass().getName() + " shutting down context by removing known leaks (CL: 0x" +
          Integer.toHexString(System.identityHashCode(classLoaderLeakPreventor.getClassLoader())) + ")");
 
     for(ServletContextListener listener : otherListeners) {
@@ -238,14 +238,19 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
         classLoaderLeakPreventor.error(e);
       }
     }
-    
+
     classLoaderLeakPreventor.runCleanUps();
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Utility methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  
+
+  /** Create {@link ClassLoaderLeakPreventorFactory} to use. Subclasses may opt to override this method. */
+  protected ClassLoaderLeakPreventorFactory createClassLoaderLeakPreventorFactory() {
+    return new ClassLoaderLeakPreventorFactory();
+  }
+
   /** Parse init parameter for integer value, returning default if not found or invalid */
   protected static int getIntInitParameter(ServletContext servletContext, String parameterName, int defaultValue) {
     final String parameterString = servletContext.getInitParameter(parameterName);
@@ -259,7 +264,7 @@ public class ClassLoaderLeakPreventorListener implements ServletContextListener 
     }
     return defaultValue;
   }
-  
+
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Log methods
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
