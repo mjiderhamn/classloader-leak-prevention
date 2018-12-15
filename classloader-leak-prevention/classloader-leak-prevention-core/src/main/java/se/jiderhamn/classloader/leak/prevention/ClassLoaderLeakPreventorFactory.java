@@ -194,7 +194,7 @@ public class ClassLoaderLeakPreventorFactory {
   
   /** Remove all the currently configured {@link PreClassLoaderInitiator}s */
   public void clearPreInitiators() {
-    this.cleanUps.clear();
+    this.preInitiators.clear();
   }
 
   /** Remove all the currently configured {@link ClassLoaderPreMortemCleanUp}s */
