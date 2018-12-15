@@ -100,6 +100,7 @@ public class ClassLoaderLeakPreventorFactory {
     // Can we do anything about Logback http://jira.qos.ch/browse/LBCORE-205 ?
     this.addCleanUp(new IIOServiceProviderCleanUp()); // clear ImageIO registry
     this.addCleanUp(new MoxyCleanUp());
+    this.addCleanUp(new ReactorNettyHttpResourcesCleanUp());
     this.addCleanUp(new ThreadGroupContextCleanUp());
     this.addCleanUp(new X509TrustManagerImplUnparseableExtensionCleanUp());
     this.addCleanUp(new SAAJEnvelopeFactoryParserPoolCleanUp());
