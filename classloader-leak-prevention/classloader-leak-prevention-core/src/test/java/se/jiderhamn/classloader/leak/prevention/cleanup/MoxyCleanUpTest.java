@@ -23,6 +23,7 @@ public class MoxyCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<MoxyCle
     catch(IllegalAccessError e) {
       // CompilerHelper.getXmlBindingsModelContext() tries to load some internal classes that 
       // cannot be loaded anymore with java versions > 8 (Jigsaw)
+      // Leak is triggered despite exception being thrown
     }
     
     // This prevention needs to be run in addition
