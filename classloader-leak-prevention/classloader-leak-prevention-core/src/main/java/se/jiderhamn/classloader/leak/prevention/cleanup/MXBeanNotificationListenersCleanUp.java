@@ -52,7 +52,9 @@ public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemC
                   final Object handback = preventor.getFieldValue(handbackField, listenerInfo);
 
                   if (preventor.isLoadedInClassLoader(rawListener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
-                    preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + "' (or its filter or handback) of MXBean " + mxBean + " of PlatformManagedObject " + platformInterface + " was loaded in protected ClassLoader; removing");
+                    preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + 
+                    "' (or its filter or handback) of MXBean " + mxBean + 
+                    " of PlatformManagedObject " + platformInterface + " was loaded in protected ClassLoader; removing");
                     // This is safe, as the implementation (as of this writing) works with a copy,
                     // not altering the original
                     try {
