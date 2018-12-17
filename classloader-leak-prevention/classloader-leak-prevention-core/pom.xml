@@ -134,6 +134,16 @@
       <scope>test</scope>
     </dependency>
     -->
+    
+    <!-- Internal APIs that have been removed from the JDK in java 11. -->
+    <!-- Used for testing SAAJEnvelopeFactoryParserPoolCleanUp. -->
+    <dependency>
+      <groupId>com.sun.xml.messaging.saaj</groupId>
+      <artifactId>saaj-impl</artifactId>
+      <version>1.4.0</version>
+      <scope>provided</scope>
+    </dependency>
+    
   </dependencies>
 
   <!-- Create artifact (jar) with test classes https://maven.apache.org/guides/mini/guide-attached-tests.html -->

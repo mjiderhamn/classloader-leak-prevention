@@ -1,11 +1,8 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.lang.reflect.Method;
 import javax.xml.parsers.SAXParser;
 
-import com.sun.org.apache.xerces.internal.xni.XNIException;
-import com.sun.org.apache.xerces.internal.xni.parser.XMLParseException;
-import com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory;
-import com.sun.xml.internal.messaging.saaj.util.ParserPool;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 
 import static org.junit.Assert.assertNotNull;
@@ -28,26 +25,45 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
     }
     */
 
+    Class<?> envelopeFactoryClass = preventor.findClass("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory");
+    if (envelopeFactoryClass == null) {
+      // Try the package for the maven dependency if the internal one is not available
+      envelopeFactoryClass = preventor.findClass("com.sun.xml.messaging.saaj.soap.EnvelopeFactory");
+    }
+    
     final Object /* com.sun.xml.internal.messaging.saaj.soap.ContextClassloaderLocal */
-            parserPool = preventor.getStaticFieldValue(EnvelopeFactory.class, "parserPool");
-    final ParserPool currentParserPool = (ParserPool) preventor.findMethod(parserPool.getClass().getSuperclass(), "get").invoke(parserPool);
+            parserPool = preventor.getStaticFieldValue(envelopeFactoryClass, "parserPool");
+    final Object currentParserPool = preventor.findMethod(parserPool.getClass().getSuperclass(), "get").invoke(parserPool);
     assertNotNull(currentParserPool);
 
-    final SAXParser saxParser = currentParserPool.get();
-    saxParser.setProperty("http://apache.org/xml/properties/internal/error-handler", 
-        new CustomErrorHandler()); // Loaded by protected classloader
-    currentParserPool.put(saxParser);
+    final Method getMethod = preventor.findMethod(currentParserPool.getClass(), "get");
+    final SAXParser saxParser = (SAXParser) getMethod.invoke(currentParserPool);
+    
+    saxParser.setProperty("http://apache.org/xml/properties/internal/error-handler", getCustomErrorHandlerInstance(preventor));
+    
+    final Method putMethod = preventor.findMethod(currentParserPool.getClass(), "put", SAXParser.class);
+    putMethod.invoke(currentParserPool, saxParser);
   }
 
-  /** Dummy XMLErrorHandler loaded by the class loader that should be garbage collected*/
-  public static class CustomErrorHandler implements com.sun.org.apache.xerces.internal.xni.parser.XMLErrorHandler {
-    @Override
-    public void warning(String domain, String key, XMLParseException exception) throws XNIException { }
+  /*
+   * Create a dummy XMLErrorHandler to be loaded by the classloader that sould be garbage collected
+   * Create using reflection, since the type is not accessible in newer Java Versions
+   */
+  public Object getCustomErrorHandlerInstance(final ClassLoaderLeakPreventor preventor) {
+    final Class<?> errorHandlerClass = preventor.findClass("com.sun.org.apache.xerces.internal.xni.parser.XMLErrorHandler");
+   
+    Object instance = java.lang.reflect.Proxy.newProxyInstance(
+        this.getClass().getClassLoader(),
+        new java.lang.Class[] { errorHandlerClass },
+        new java.lang.reflect.InvocationHandler() {
 
-    @Override
-    public void error(String domain, String key, XMLParseException exception) throws XNIException { }
-
-    @Override
-    public void fatalError(String domain, String key, XMLParseException exception) throws XNIException { }
+        @Override
+        public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) throws java.lang.Throwable {
+          // Can be empty since we don't really want to use the handler  
+          return null;
+        }
+    });
+    
+    return errorHandlerClass.cast(instance);
   }
 }
