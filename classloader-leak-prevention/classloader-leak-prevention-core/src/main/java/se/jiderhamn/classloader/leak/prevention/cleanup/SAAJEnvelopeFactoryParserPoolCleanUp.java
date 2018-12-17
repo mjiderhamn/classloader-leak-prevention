@@ -15,14 +15,14 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 public class SAAJEnvelopeFactoryParserPoolCleanUp implements ClassLoaderPreMortemCleanUp {
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
-    Object /*com.sun.xml.internal.messaging.saaj.soap.ContextClassloaderLocal*/
-        parserPool = preventor.getStaticFieldValue("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory",
-        "parserPool");
-    if(parserPool == null) {
-      // Try the package for the maven dependency if the internal one is not available
-      parserPool = preventor.getStaticFieldValue("com.sun.xml.messaging.saaj.soap.EnvelopeFactory",
-          "parserPool");
-    }
+    // Internal class from the JDK (Removed in JDK11)
+    cleanupWithFactoryClass(preventor, preventor.findClass("com.sun.xml.internal.messaging.saaj.soap.EnvelopeFactory"));
+    // Maven dependency
+    cleanupWithFactoryClass(preventor, preventor.findClass("com.sun.xml.messaging.saaj.soap.EnvelopeFactory"));
+  }
+
+  private void cleanupWithFactoryClass(final ClassLoaderLeakPreventor preventor, Class<?> factoryClass) {
+    final Object parserPool = preventor.getStaticFieldValue(factoryClass, "parserPool");
     
     if(parserPool != null) {
       final Field CACHE = preventor.findField(parserPool.getClass().getSuperclass(), "CACHE");
