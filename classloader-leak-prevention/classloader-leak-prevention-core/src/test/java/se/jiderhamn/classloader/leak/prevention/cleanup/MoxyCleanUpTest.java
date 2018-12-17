@@ -17,7 +17,13 @@ public class MoxyCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<MoxyCle
     // Class.forName("org.eclipse.persistence.jaxb.compiler.Property", true, leakSafeCL);
     Class.forName("org.eclipse.persistence.jaxb.compiler.CompilerHelper", true, leakSafeCL);
     
-    CompilerHelper.getXmlBindingsModelContext();
+    try {
+      CompilerHelper.getXmlBindingsModelContext();
+    }
+    catch(IllegalAccessError e) {
+      // CompilerHelper.getXmlBindingsModelContext() tries to load some internal classes that 
+      // cannot be loaded anymore with java versions > 8 (Jigsaw)
+    }
     
     // This prevention needs to be run in addition
     new ResourceBundleCleanUp().cleanUp(getClassLoaderLeakPreventor());

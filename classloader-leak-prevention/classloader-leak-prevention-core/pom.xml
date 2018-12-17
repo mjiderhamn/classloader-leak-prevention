@@ -134,7 +134,7 @@
       <scope>test</scope>
     </dependency>
     -->
-    
+
     <!-- Internal APIs that have been removed from the JDK in java 11. -->
     <!-- Used for testing SAAJEnvelopeFactoryParserPoolCleanUp. -->
     <dependency>
@@ -144,6 +144,31 @@
       <scope>provided</scope>
     </dependency>
     
+    <!-- Internal APIs that have been removed from the JDK in java 11. Used for MoxyCleanUpTest -->
+    <dependency>
+      <groupId>javax.xml.bind</groupId>
+      <artifactId>jaxb-api</artifactId>
+      <version>2.2.11</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.xml.bind</groupId>
+      <artifactId>jaxb-core</artifactId>
+      <version>2.2.11</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.xml.bind</groupId>
+      <artifactId>jaxb-impl</artifactId>
+      <version>2.2.11</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>javax.activation</groupId>
+      <artifactId>activation</artifactId>
+      <version>1.1.1</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <!-- Create artifact (jar) with test classes https://maven.apache.org/guides/mini/guide-attached-tests.html -->
