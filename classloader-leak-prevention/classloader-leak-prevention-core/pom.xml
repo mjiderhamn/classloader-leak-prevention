@@ -135,6 +135,15 @@
     </dependency>
     -->
 
+    <!-- Internal APIs that have been removed from the JDK in java 11. -->
+    <!-- Used for testing SAAJEnvelopeFactoryParserPoolCleanUp. -->
+    <dependency>
+      <groupId>com.sun.xml.messaging.saaj</groupId>
+      <artifactId>saaj-impl</artifactId>
+      <version>1.4.0</version>
+      <scope>provided</scope>
+    </dependency>
+    
     <!-- Internal APIs that have been removed from the JDK in java 11. Used for MoxyCleanUpTest -->
     <dependency>
       <groupId>javax.xml.bind</groupId>

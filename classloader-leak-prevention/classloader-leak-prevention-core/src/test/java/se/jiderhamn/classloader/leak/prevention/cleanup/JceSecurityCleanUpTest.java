@@ -1,5 +1,6 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
 /**
@@ -16,6 +17,10 @@ public class JceSecurityCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<
       javax.crypto.Mac.getInstance("baz", myProvider);
     }
     catch (SecurityException e) { // CS:IGNORE
+      // Leak is triggered despite an exception being thrown
+    }
+    catch (NoSuchAlgorithmException e) { // CS:IGNORE
+      // Leak is triggered despite an exception being thrown
     }
   }
   

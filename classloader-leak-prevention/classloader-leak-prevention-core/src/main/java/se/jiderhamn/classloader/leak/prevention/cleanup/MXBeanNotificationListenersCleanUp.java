@@ -1,10 +1,13 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
+import java.lang.management.ManagementFactory;
 import java.lang.management.PlatformManagedObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Set;
+
 import javax.management.*;
 
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
@@ -18,71 +21,54 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 public class MXBeanNotificationListenersCleanUp implements ClassLoaderPreMortemCleanUp {
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
-    final Class<?> platformComponentClass = preventor.findClass("java.lang.management.PlatformComponent");
-    final Method getMXBeans = preventor.findMethod(platformComponentClass, "getMXBeans", Class.class);
-    if(platformComponentClass != null && getMXBeans != null) { 
-      final Class<?> notificationEmitterSupportClass = preventor.findClass("sun.management.NotificationEmitterSupport");
-      final Field listenerListField = preventor.findField(notificationEmitterSupportClass, "listenerList");
+    final Class<?> notificationEmitterSupportClass = preventor.findClass("sun.management.NotificationEmitterSupport");
+    final Field listenerListField = preventor.findField(notificationEmitterSupportClass, "listenerList");
+    final Class<?> listenerInfoClass = preventor.findClass("sun.management.NotificationEmitterSupport$ListenerInfo");
+    final Field listenerField = preventor.findField(listenerInfoClass, "listener");
+    final Field filterField = preventor.findField(listenerInfoClass, "filter");
+    final Field handbackField = preventor.findField(listenerInfoClass, "handback");
 
-      final Class<?> listenerInfoClass = preventor.findClass("sun.management.NotificationEmitterSupport$ListenerInfo");
-      final Field listenerField = preventor.findField(listenerInfoClass, "listener");
-      final Field filterField = preventor.findField(listenerInfoClass, "filter");
-      final Field handbackField = preventor.findField(listenerInfoClass, "handback");
-      
-      final Class<?> listenerWrapperClass = preventor.findClass("com.sun.jmx.interceptor.DefaultMBeanServerInterceptor$ListenerWrapper");
+    final Class<?> listenerWrapperClass = preventor.findClass("com.sun.jmx.interceptor.DefaultMBeanServerInterceptor$ListenerWrapper");
 
-      final boolean canProcessNotificationEmitterSupport =
-          listenerListField != null && listenerInfoClass != null && 
-          listenerField != null && filterField != null && handbackField != null;
+    final boolean canProcessNotificationEmitterSupport = listenerListField != null && listenerInfoClass != null && listenerField != null && filterField != null && handbackField != null;
 
-      if(! canProcessNotificationEmitterSupport)
-        preventor.warn("Unable to unregister NotificationEmitterSupport listeners, because details could not be found using reflection");
+    if (!canProcessNotificationEmitterSupport) {
+      preventor.warn("Unable to unregister NotificationEmitterSupport listeners, because details could not be found using reflection");
+    }
 
-      final Object[] platformComponents = platformComponentClass.getEnumConstants();
-      if(platformComponents != null) {
-        for(Object platformComponent : platformComponents) {
-          List<PlatformManagedObject> mxBeans = null;
-          try {
-            mxBeans = (List<PlatformManagedObject>) getMXBeans.invoke(platformComponent, (Class<?>) null);
-          }
-          catch (IllegalAccessException ex) {
-            preventor.error(ex);
-          }
-          catch (InvocationTargetException ex) {
-            preventor.error(ex);
-          }
+    final Set<Class<? extends PlatformManagedObject>> platformInterfaces = ManagementFactory.getPlatformManagementInterfaces();
 
-          if(mxBeans != null) { // We were able to retrieve MXBeans for this PlatformComponent
-            for(PlatformManagedObject mxBean : mxBeans) {
-              if(mxBean instanceof NotificationEmitter) { // The MXBean may have NotificationListeners
-                if(canProcessNotificationEmitterSupport && notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
-                  final List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList = preventor.getFieldValue(listenerListField, mxBean);
-                  if(listenerList != null) {
-                    for(Object listenerInfo : listenerList) { // Loop all listeners
-                      final NotificationListener listener = preventor.getFieldValue(listenerField, listenerInfo);
-                      final NotificationListener rawListener = unwrap(preventor, listenerWrapperClass, listener);
-                      final NotificationFilter filter = preventor.getFieldValue(filterField, listenerInfo);
-                      final Object handback = preventor.getFieldValue(handbackField, listenerInfo);
+    if (platformInterfaces != null) {
+      for (Class<? extends PlatformManagedObject> platformInterface : platformInterfaces) {
+        for (Object mxBean : ManagementFactory.getPlatformMXBeans(platformInterface)) {
+          if (mxBean instanceof NotificationEmitter) { // The MXBean may have NotificationListeners
+            if (canProcessNotificationEmitterSupport && notificationEmitterSupportClass.isAssignableFrom(mxBean.getClass())) {
+              final List<? /* NotificationEmitterSupport.ListenerInfo */> listenerList = preventor.getFieldValue(listenerListField, mxBean);
+              if (listenerList != null) {
+                for (Object listenerInfo : listenerList) { // Loop all listeners
+                  final NotificationListener listener = preventor.getFieldValue(listenerField, listenerInfo);
+                  final NotificationListener rawListener = unwrap(preventor, listenerWrapperClass, listener);
+                  final NotificationFilter filter = preventor.getFieldValue(filterField, listenerInfo);
+                  final Object handback = preventor.getFieldValue(handbackField, listenerInfo);
 
-                      if(preventor.isLoadedInClassLoader(rawListener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
-                        preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + 
-                            "' (or its filter or handback) of MXBean " + mxBean + 
-                            " of PlatformComponent " + platformComponent + " was loaded in protected ClassLoader; removing");
-                        // This is safe, as the implementation (as of this writing) works with a copy, not altering the original
-                        try {
-                          ((NotificationEmitter) mxBean).removeNotificationListener(listener, filter, handback);
-                        }
-                        catch (ListenerNotFoundException e) { // Should never happen
-                          preventor.error(e);
-                        }
-                      }
+                  if (preventor.isLoadedInClassLoader(rawListener) || preventor.isLoadedInClassLoader(filter) || preventor.isLoadedInClassLoader(handback)) {
+                    preventor.warn(((listener == rawListener) ? "Listener '" : "Wrapped listener '") + listener + 
+                    "' (or its filter or handback) of MXBean " + mxBean + 
+                    " of PlatformManagedObject " + platformInterface + " was loaded in protected ClassLoader; removing");
+                    // This is safe, as the implementation (as of this writing) works with a copy,
+                    // not altering the original
+                    try {
+                      ((NotificationEmitter) mxBean).removeNotificationListener(listener, filter, handback);
+                    }
+                    catch (ListenerNotFoundException e) { // Should never happen
+                      preventor.error(e);
                     }
                   }
                 }
-                else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
-                  unregisterNotificationListeners(preventor, (NotificationBroadcasterSupport) mxBean, listenerWrapperClass);
-                }
               }
+            }
+            else if(mxBean instanceof NotificationBroadcasterSupport) { // Unlikely case
+              unregisterNotificationListeners(preventor, (NotificationBroadcasterSupport) mxBean, listenerWrapperClass);
             }
           }
         }

@@ -8,7 +8,7 @@ import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
 import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
 
 /**
- * Clean for the cache of {@link javax.el.BeanELResolver}
+ * Clean for the cache of {@link javax.el.BeanELResolver}, which leaks prior to version 2.2.4.
  * @author Mattias Jiderhamn
  */
 public class BeanELResolverCleanUp implements ClassLoaderPreMortemCleanUp {
