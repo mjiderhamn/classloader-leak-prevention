@@ -47,7 +47,7 @@ public class SAAJEnvelopeFactoryParserPoolCleanUpTest extends ClassLoaderPreMort
 
   /*
    * Create a dummy XMLErrorHandler to be loaded by the classloader that sould be garbage collected
-   * Create using reflection, since the type is not accessible in newer Java Versions
+   * Create using reflection, since the type is not compile time accessible in newer Java Versions
    */
   public Object getCustomErrorHandlerInstance(final ClassLoaderLeakPreventor preventor) {
     final Class<?> errorHandlerClass = preventor.findClass("com.sun.org.apache.xerces.internal.xni.parser.XMLErrorHandler");
