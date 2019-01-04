@@ -27,7 +27,10 @@ public class ClassLoaderLeakPreventor {
   private static final AccessControlContext NO_DOMAINS_ACCESS_CONTROL_CONTEXT = new AccessControlContext(NO_DOMAINS);
 
   /** {@link ClassLoader#isAncestor(ClassLoader)} */
-  private final Method java_lang_classLoader_isAncestor;
+  private final Method java_lang_ClassLoader_isAncestor;
+  
+  /** {@link ClassLoader#isAncestorOf(ClassLoader)} of IBM JRE */
+  private final Method java_lang_ClassLoader_isAncestorOf;
   
   private final Field java_security_AccessControlContext$combiner;
   
@@ -63,7 +66,15 @@ public class ClassLoaderLeakPreventor {
     this.preClassLoaderInitiators = preClassLoaderInitiators;
     this.cleanUps = cleanUps;
 
-    java_lang_classLoader_isAncestor = findMethod(ClassLoader.class, "isAncestor", ClassLoader.class);
+    final String javaVendor = System.getProperty("java.vendor");
+    if(javaVendor != null && javaVendor.startsWith("IBM")) { // IBM
+      java_lang_ClassLoader_isAncestor = null;
+      java_lang_ClassLoader_isAncestorOf = findMethod(ClassLoader.class, "isAncestorOf", ClassLoader.class);
+    }
+    else { // Oracle
+      java_lang_ClassLoader_isAncestor = findMethod(ClassLoader.class, "isAncestor", ClassLoader.class);
+      java_lang_ClassLoader_isAncestorOf = null;
+    }
     NestedProtectionDomainCombinerException.class.getName(); // Should be loaded before switching to leak safe classloader
     
     this.domainCombiner = createDomainCombiner();
@@ -273,16 +284,25 @@ public class ClassLoaderLeakPreventor {
       return true;
     }
     else { // It could be a child of the webapp classloader
-      if(java_lang_classLoader_isAncestor != null) { // Primarily use ClassLoader.isAncestor()
+      if(java_lang_ClassLoader_isAncestor != null) { // Primarily use ClassLoader.isAncestor()
         try {
-          return (Boolean) java_lang_classLoader_isAncestor.invoke(cl, classLoader);
+          return (Boolean) java_lang_ClassLoader_isAncestor.invoke(cl, classLoader);
         }
         catch (Exception e) {
           error(e);
         }
       }
 
-      // We were unable to use ClassLoader.isAncestor()
+      if(java_lang_ClassLoader_isAncestorOf != null) { // Secondarily use IBM ClassLoader.isAncestorOf()
+        try {
+          return (Boolean) java_lang_ClassLoader_isAncestorOf.invoke(classLoader, cl);
+        }
+        catch (Exception e) {
+          error(e);
+        }
+      }
+
+      // We were unable to use ClassLoader.isAncestor() or isAncestorOf()
       try {
         while(cl != null) {
           if(cl == classLoader)
