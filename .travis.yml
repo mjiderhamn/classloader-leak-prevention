@@ -4,7 +4,7 @@ language: java
 
 jdk:
   - oraclejdk8
-  - oraclejdk11
+  - openjdk11
 
 # Uncomment to upload heapdumps to S3 bucket; https://docs.travis-ci.com/user/uploading-artifacts/
 #addons:
