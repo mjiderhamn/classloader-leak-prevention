@@ -18,8 +18,8 @@ public class PropertyEditorCleanUp implements ClassLoaderPreMortemCleanUp {
   @Override
   public void cleanUp(ClassLoaderLeakPreventor preventor) {
     final Field registryField = preventor.findField(PropertyEditorManager.class, "registry");
-    if(registryField == null) {
-      preventor.error("Internal registry of " + PropertyEditorManager.class.getName() + " not found");
+    if(registryField == null) { // We're probably on a newer JDK
+      preventor.info("Internal registry of " + PropertyEditorManager.class.getName() + " not found");
     }
     else {
       try {
