@@ -222,12 +222,25 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
                     " ms. " + preventor.getStackTrace(thread));
                 preventor.waitForThread(thread, threadWaitMs, false /* No interrupt */);
               }
-              
+
               if(thread.isAlive() && preventor.isClassLoaderOrChild(thread.getContextClassLoader())) { // Still running in ClassLoader
                 preventor.warn(displayString + (waitForThreads ? " still" : "") + 
                     " alive; changing context ClassLoader to leak safe (" + 
                     preventor.getLeakSafeClassLoader() + "). " + preventor.getStackTrace(thread));
                 thread.setContextClassLoader(preventor.getLeakSafeClassLoader());
+
+                // Replace AccessControlContext since we already replaced ClassLoader, @see StopThreadsClenup_ExecutorTest
+                final Field inheritedAccessControlContext = preventor.findField(Thread.class, "inheritedAccessControlContext");
+                if(inheritedAccessControlContext != null) {
+                  try {
+                    final AccessControlContext acc = preventor.createAccessControlContext();
+                    inheritedAccessControlContext.set(thread, acc);
+                    preventor.removeDomainCombiner("thread " + thread, acc);
+                  }
+                  catch (Exception e) {
+                    preventor.error(e);
+                  }
+                }
               }
             }
             else if(stopThreads) { // Thread/Runnable/ThreadGroup loaded by protected ClassLoader
