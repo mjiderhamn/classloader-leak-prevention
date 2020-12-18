@@ -10,8 +10,8 @@ import java.lang.reflect.Field;
  *   Document document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
  *   DOMImplementationLS implementation = (DOMImplementationLS)document.getImplementation();
  *   implementation.createLSSerializer().writeToString(document);
- * </code> may trigger leaks caused by the static fields {@link com.sun.org.apache.xerces.internal.dom.DOMNormalizer#abort} and
- * {@link com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl#abort} respectively keeping stacktraces/backtraces
+ * </code> may trigger leaks caused by the static fields "com.sun.org.apache.xerces.internal.dom.DOMNormalizer#abort" and
+ * "com.sun.org.apache.xml.internal.serialize.DOMSerializerImpl#abort" respectively keeping stacktraces/backtraces
  * that may include references to classes loaded by our web application.
  * 
  * Since the {@link java.lang.Throwable#backtrace} itself cannot be accessed via reflection (see 
