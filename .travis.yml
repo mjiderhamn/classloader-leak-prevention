@@ -11,3 +11,7 @@ jdk:
 #  artifacts:
 #    paths:
 #      - $(ls $HOME/build/mjiderhamn/classloader-leak-prevention/classloader-leak-prevention/classloader-leak-prevention-core/target/surefire-reports/*.hprof | tr "\n" ":")
+
+cache:
+  directories:
+  - $HOME/.m2
