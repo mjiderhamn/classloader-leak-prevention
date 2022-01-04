@@ -94,7 +94,9 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
             java_lang_ThreadLocal$ThreadLocalMap$Entry_value = preventor.findField(entry.getClass(), "value");
           }
 
-          final Object value = java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry);
+          // Dereference the value if this is a Reference<T>: all Reference<T> implementations are all loaded using the bootstrap classloader,
+          // so checking the Reference<T> classloader won't indicate if the held value was itself loaded using the app classloader 
+          final Object value = dereferenceIfApplicable(java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry));
 
           // Workaround for http://bugs.caucho.com/view.php?id=5647
           if(value != null && CAUCHO_TRANSACTION_IMPL.equals(value.getClass().getName())) { // Resin transaction
@@ -134,7 +136,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
               }
             }
           }
-
+          
           final boolean customThreadLocal = preventor.isLoadedInClassLoader(threadLocal); // This is not an actual problem
           final boolean valueLoadedInWebApp = preventor.isLoadedInClassLoader(value);
           if(customThreadLocal || valueLoadedInWebApp ||
@@ -166,6 +168,10 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
         }
       }
     }
+  }
+  
+  protected Object dereferenceIfApplicable(Object value) {
+      return value instanceof Reference ? dereferenceIfApplicable(((Reference<?>) value).get()) : value; 
   }
 
   /**
