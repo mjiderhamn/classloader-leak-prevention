@@ -8,6 +8,8 @@ import java.lang.ref.SoftReference;
  * 
  * All {@link Reference} implementations are using the bootstrap classloader, so it's required to dereference the value
  * to check which classloader was used for the value held by the Reference instance.
+ * 
+ * Also check {@link ThreadLocalWithNestedRefValueCleanUpTest}
  */
 public class ThreadLocalWithRefValueCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<ThreadLocalCleanUp> {
 

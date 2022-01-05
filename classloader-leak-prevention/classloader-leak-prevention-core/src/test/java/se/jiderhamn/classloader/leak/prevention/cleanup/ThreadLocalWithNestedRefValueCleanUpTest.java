@@ -5,6 +5,7 @@ import java.lang.ref.SoftReference;
 /**
  * Another variant test case for {@link ThreadLocalCleanUp} using chained {@link SoftReference}s to the value,
  * checking that the value is recursively dereferenced.
+ * Also check {@link ThreadLocalWithRefValueCleanUpTest}
  */
 public class ThreadLocalWithNestedRefValueCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<ThreadLocalCleanUp> {
 
