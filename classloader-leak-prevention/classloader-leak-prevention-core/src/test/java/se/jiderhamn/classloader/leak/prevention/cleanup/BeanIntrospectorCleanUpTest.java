@@ -2,6 +2,9 @@ package se.jiderhamn.classloader.leak.prevention.cleanup;
 
 import java.beans.Introspector;
 
+/**
+ * Test case for {@link BeanIntrospectorCleanUp}
+ */
 public class BeanIntrospectorCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<BeanIntrospectorCleanUp> {
 
     @Override
