@@ -71,7 +71,7 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
     stopThreads(preventor);
   }
   
-  /** 
+  /**
    * The bug detailed at https://issues.apache.org/ooo/show_bug.cgi?id=122517 is quite tricky. This is a try to 
    * avoid the issues by force starting the threads and it's job queue.
    */
@@ -310,11 +310,11 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
    * See https://issues.apache.org/ooo/show_bug.cgi?id=122517
    */
   protected class JURTKiller extends Thread {
-    
+
     private final ClassLoaderLeakPreventor preventor;
-    
+
     private final Thread jurtThread;
-    
+
     private final List<?> jurtQueue;
 
     public JURTKiller(ClassLoaderLeakPreventor preventor, Thread jurtThread) {
@@ -322,46 +322,54 @@ public class StopThreadsCleanUp implements ClassLoaderPreMortemCleanUp {
       this.preventor = preventor;
       this.jurtThread = jurtThread;
       jurtQueue = preventor.getStaticFieldValue(StopThreadsCleanUp.JURT_ASYNCHRONOUS_FINALIZER, "queue");
+      // Make sure all classes are loaded from the current app classloader before it executes,
+      // as it may use them *after* the classloader has been "shutdown" by the container (if any).
+      State state = State.RUNNABLE;
     }
 
     @Override
     public void run() {
-      if(jurtQueue == null || jurtThread == null) {
-        preventor.error(getName() + ": No queue or thread!?");
-        return;
-      }
-      if(! jurtThread.isAlive()) {
-        preventor.warn(getName() + ": " + jurtThread.getName() + " is already dead?");
-      }
-      
-      boolean queueIsEmpty = false;
-      while(! queueIsEmpty) {
         try {
-          preventor.debug(getName() + " goes to sleep for " + ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT + " ms");
-          Thread.sleep(ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
-        }
-        catch (InterruptedException e) {
-          // Do nothing
-        }
+            if(jurtQueue == null || jurtThread == null) {
+                preventor.error(getName() + ": No queue or thread!?");
+                return;
+              }
+              if(! jurtThread.isAlive()) {
+                preventor.warn(getName() + ": " + jurtThread.getName() + " is already dead?");
+              }
 
-        if(State.RUNNABLE != jurtThread.getState()) { // Unless thread is currently executing a Job
-          preventor.debug(getName() + " about to force Garbage Collection");
-          ClassLoaderLeakPreventor.gc(); // Force garbage collection, which may put new items on queue
+              boolean queueIsEmpty = false;
+              while(! queueIsEmpty) {
+                try {
+                  preventor.debug(getName() + " goes to sleep for " + ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT + " ms");
+                  Thread.sleep(ClassLoaderLeakPreventor.THREAD_WAIT_MS_DEFAULT);
+                }
+                catch (InterruptedException e) {
+                  // Do nothing
+                }
 
-          synchronized (jurtQueue) {
-            queueIsEmpty = jurtQueue.isEmpty();
-            preventor.debug(getName() + ": JURT queue is empty? " + queueIsEmpty);
-          }
+                if(State.RUNNABLE != jurtThread.getState()) { // Unless thread is currently executing a Job
+                  preventor.debug(getName() + " about to force Garbage Collection");
+                  ClassLoaderLeakPreventor.gc(); // Force garbage collection, which may put new items on queue
+
+                  synchronized (jurtQueue) {
+                    queueIsEmpty = jurtQueue.isEmpty();
+                    preventor.debug(getName() + ": JURT queue is empty? " + queueIsEmpty);
+                  }
+                }
+                else
+                  preventor.debug(getName() + ": JURT thread " + jurtThread.getName() + " is executing Job");
+                }
+
+              preventor.info(getName() + " about to kill " + jurtThread);
+              if(jurtThread.isAlive()) {
+                //noinspection deprecation
+                jurtThread.stop();
+              }
         }
-        else 
-          preventor.debug(getName() + ": JURT thread " + jurtThread.getName() + " is executing Job");
-      }
-      
-      preventor.info(getName() + " about to kill " + jurtThread);
-      if(jurtThread.isAlive()) {
-        //noinspection deprecation
-        jurtThread.stop();
-      }
+        catch (Throwable t) {
+            preventor.error(t);
+        }
     }
   }
   
