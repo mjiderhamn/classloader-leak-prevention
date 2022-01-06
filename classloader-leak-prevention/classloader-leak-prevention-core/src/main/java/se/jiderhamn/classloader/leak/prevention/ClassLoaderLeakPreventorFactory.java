@@ -87,6 +87,7 @@ public class ClassLoaderLeakPreventorFactory {
     this.addPreInitiator(new OracleJdbcThreadInitiator());
 
     this.addCleanUp(new BeanIntrospectorCleanUp());
+    this.addCleanUp(new ObjectStreamClassCleanup());
     
     // Apache Commons Pool can leave unfinished threads. Anything specific we can do?
     this.addCleanUp(new BeanELResolverCleanUp());
