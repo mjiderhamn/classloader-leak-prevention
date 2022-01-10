@@ -44,8 +44,8 @@
   </developers>   
 
   <properties>
-    <maven.compiler.source>1.6</maven.compiler.source>
-    <maven.compiler.target>1.6</maven.compiler.target>
+    <maven.compiler.source>1.7</maven.compiler.source>
+    <maven.compiler.target>1.7</maven.compiler.target>
     <!-- Disable strict JavaDoc checking, as per http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html -->
     <additionalparam>-Xdoclint:none</additionalparam>
   </properties>
@@ -104,6 +104,31 @@
   </build>
 
   <profiles>
+    <profile>
+      <id>surefire-java9orhigher</id>
+        <activation>
+          <jdk>(9,)</jdk>
+        </activation>
+        <build>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <version>2.22.2</version>
+              <configuration>
+                <argLine>
+                   --add-opens java.base/sun.reflect.misc=ALL-UNNAMED
+                   --add-opens java.base/sun.reflect.misc=ALL-UNNAMED
+                   --add-opens java.base/sun.security.action=ALL-UNNAMED
+                   --add-opens java.desktop/sun.awt=ALL-UNNAMED
+                   --add-opens java.desktop/sun.swing=ALL-UNNAMED
+                   --add-opens java.desktop/sun.lwawt.macosx=ALL-UNNAMED
+                </argLine>
+              </configuration>
+            </plugin>
+          </plugins>
+        </build>
+    </profile>
     <profile>
       <id>release</id>
       <build>

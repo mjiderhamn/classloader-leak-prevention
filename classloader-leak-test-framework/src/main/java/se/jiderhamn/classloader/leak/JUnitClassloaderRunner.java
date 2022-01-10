@@ -7,6 +7,7 @@ import java.lang.reflect.Method;
 import java.net.URL;
 
 import org.junit.Assert;
+import org.junit.AssumptionViolatedException;
 import org.junit.internal.runners.statements.InvokeMethod;
 import org.junit.runners.BlockJUnit4ClassRunner;
 import org.junit.runners.model.FrameworkMethod;
@@ -98,6 +99,8 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
           new RedefiningClassLoader(clBefore, testName, ignoredPackages): 
           new RedefiningClassLoader(clBefore, testName);
       
+      boolean assumptionFailed = false;
+
       try {
         Thread.currentThread().setContextClassLoader(myClassLoader);
 
@@ -118,6 +121,11 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myTestClass = null;
         myMethod = null;
       }
+      catch (AssumptionViolatedException assumptionFailure) {
+          // An assumption (via org.junit.Assume) failed to verify,
+          // meaning that the test is irrelevant and must be considered as ignored 
+          assumptionFailed = true;
+      }
       catch (Exception e) {
         e.printStackTrace(System.err); // Print here in case other exception is thrown in finally block
         throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
@@ -132,6 +140,11 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myClassLoader = null; // Make available to garbage collector
         
         forceGc(3);
+
+        if (assumptionFailed) {
+            // Test is irrelevant and must not be considered as failed.
+            return;
+        }
 
         if(expectedLeak) { // We expect this test to leak classloaders
           RedefiningClassLoader redefiningClassLoader = weak.get();
