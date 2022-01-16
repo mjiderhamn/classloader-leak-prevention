@@ -28,13 +28,19 @@ public class BeanIntrospectorCleanUp implements ClassLoaderPreMortemCleanUp {
   private void clearClassInfoCache(ClassLoaderLeakPreventor preventor) {
       try {
           final Class<?> classInfoClass = preventor.findClass("com.sun.beans.introspect.ClassInfo");
-          if (classInfoClass == null) { return; }
+          if (classInfoClass == null) {
+            return;
+          }
 
           Field cacheField = preventor.findField(classInfoClass, "CACHE");
-          if (cacheField == null) { return; } // Either pre-JDK9 or exception occurred (should have been logged as warn at this point)
+          if (cacheField == null) {
+            return;  // Either pre-JDK9 or exception occurred (should have been logged as warn at this point)
+          }
 
           Object cacheInstance = cacheField.get(null);
-          if (cacheInstance == null) { return; }
+          if (cacheInstance == null) {
+            return;
+          }
           Method clearMethod = cacheInstance.getClass().getSuperclass().getDeclaredMethod("clear");
           clearMethod.invoke(cacheInstance);
       }
