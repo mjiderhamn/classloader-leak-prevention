@@ -96,6 +96,7 @@ public class ThreadLocalCleanUp implements ClassLoaderPreMortemCleanUp, MustBeAf
 
           // Dereference the value if this is a Reference<T>: all Reference<T> implementations are all loaded using the bootstrap classloader,
           // so checking the Reference<T> classloader won't indicate if the held value was itself loaded using the app classloader 
+          // We could have called Reference.clear() directly, which would have fixed the leak even when not allowed to modify the ThreadLocalMap.Entry
           final Object value = dereferenceIfApplicable(java_lang_ThreadLocal$ThreadLocalMap$Entry_value.get(entry));
 
           // Workaround for http://bugs.caucho.com/view.php?id=5647
