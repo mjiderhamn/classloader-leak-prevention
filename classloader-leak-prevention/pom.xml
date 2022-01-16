@@ -52,6 +52,8 @@
   <properties>
     <!-- Disable strict JavaDoc checking, as per http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html -->
     <additionalparam>-Xdoclint:none</additionalparam>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
 
   <repositories>
