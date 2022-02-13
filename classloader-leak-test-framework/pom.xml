@@ -118,7 +118,6 @@
               <configuration>
                 <argLine>
                    --add-opens java.base/sun.reflect.misc=ALL-UNNAMED
-                   --add-opens java.base/sun.reflect.misc=ALL-UNNAMED
                    --add-opens java.base/sun.security.action=ALL-UNNAMED
                    --add-opens java.desktop/sun.awt=ALL-UNNAMED
                    --add-opens java.desktop/sun.swing=ALL-UNNAMED
