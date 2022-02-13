@@ -52,6 +52,8 @@
   <properties>
     <!-- Disable strict JavaDoc checking, as per http://blog.joda.org/2014/02/turning-off-doclint-in-jdk-8-javadoc.html -->
     <additionalparam>-Xdoclint:none</additionalparam>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
 
   <repositories>
@@ -59,7 +61,7 @@
     <repository>
       <id>osgeo</id>
       <name>Open Source Geospatial Foundation Repository</name>
-      <url>http://download.osgeo.org/webdav/geotools/</url>
+      <url>https://repo.osgeo.org/repository/release/</url>
     </repository>
   </repositories>
 
@@ -68,7 +70,7 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.12</version>
+      <version>4.13.2</version>
       <scope>test</scope>
     </dependency>
     <dependency>
