@@ -21,8 +21,8 @@ public class StopThreadsCleanUp_TimerTest {
    * Having a custom ThreadLocal with at non-custom value does not leak, since the key in the ThreadLocalMap is weak
    */
   @Test
-  public void createTimer() throws IllegalAccessException, NoSuchFieldException {
-    Timer timer =new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
+  public void createTimer() {
+    Timer timer = new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
     // Ensure that a task is scheduled against this timer, making sure that scheduled tasks are cancelled by StopThreadsCleanUp.
     // Not doing so will also cause this test to intermittently fail with JDK17+ with
     // "ClassLoader has been garbage collected, while test is expected to leak"
