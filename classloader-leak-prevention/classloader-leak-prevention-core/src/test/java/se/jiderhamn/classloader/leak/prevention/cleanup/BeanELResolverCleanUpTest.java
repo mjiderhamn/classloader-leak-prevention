@@ -1,14 +1,28 @@
 package se.jiderhamn.classloader.leak.prevention.cleanup;
 
-import javax.el.*;
+import javax.el.BeanELResolver;
+import javax.el.ELContext;
+import javax.el.ELResolver;
+import javax.el.FunctionMapper;
+import javax.el.VariableMapper;
 
 import org.junit.Before;
 
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.BeanELResolverCleanUpTest.BeanELResolverCombinedCleanUp;
+
 /**
  * Test case for {@link BeanELResolverCleanUp}
+ *
+ * NOTE: this case also triggers the leak from com.sun.beans.introspect.ClassInfo.CACHE,
+ * which should be handled as part of {@link BeanIntrospectorCleanUp}.
+ * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/123 for the specifics.
+ * A combined (JavaServerFaces2746CleanUp,BeanIntrospectorCleanUp) cleanup is used here to handle this test
+ *
  * @author Mattias Jiderhamn
  */
-public class BeanELResolverCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<BeanELResolverCleanUp> {
+public class BeanELResolverCleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<BeanELResolverCombinedCleanUp> {
 
   @Before
   public void setUp() {
@@ -56,5 +70,13 @@ public class BeanELResolverCleanUpTest extends ClassLoaderPreMortemCleanUpTestBa
       throw new UnsupportedOperationException("dummy");
     }
   }
-  
+
+  public static class BeanELResolverCombinedCleanUp implements ClassLoaderPreMortemCleanUp {
+      @Override
+      public void cleanUp(ClassLoaderLeakPreventor preventor) {
+          new BeanELResolverCleanUp().cleanUp(preventor);
+          new BeanIntrospectorCleanUp().cleanUp(preventor);
+      }
+    }
+
 }

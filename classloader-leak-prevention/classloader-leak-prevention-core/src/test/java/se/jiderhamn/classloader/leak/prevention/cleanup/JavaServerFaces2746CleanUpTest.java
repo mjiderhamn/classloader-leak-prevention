@@ -6,11 +6,21 @@ import javax.faces.component.UIComponentBase;
 
 import com.sun.faces.el.ELContextImpl;
 
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderLeakPreventor;
+import se.jiderhamn.classloader.leak.prevention.ClassLoaderPreMortemCleanUp;
+import se.jiderhamn.classloader.leak.prevention.cleanup.JavaServerFaces2746CleanUpTest.JavaServerFaces2746CombinedCleanup;
+
 /**
  * Test case for {@link JavaServerFaces2746CleanUp}
+ *
+ * NOTE: this case also triggers the leak from com.sun.beans.introspect.ClassInfo.CACHE,
+ * which should be handled as part of {@link BeanIntrospectorCleanUp}.
+ * See https://github.com/mjiderhamn/classloader-leak-prevention/issues/123 for the specifics.
+ * A combined (JavaServerFaces2746CleanUp,BeanIntrospectorCleanUp) cleanup is used here to handle this test
+ *
  * @author Mattias Jiderhamn
  */
-public class JavaServerFaces2746CleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<JavaServerFaces2746CleanUp> {
+public class JavaServerFaces2746CleanUpTest extends ClassLoaderPreMortemCleanUpTestBase<JavaServerFaces2746CombinedCleanup> {
 
   /** 
    * Trigger leak by explicit call to {@link BeanELResolver#getFeatureDescriptors(javax.el.ELContext, Object)}.
@@ -62,5 +72,13 @@ public class JavaServerFaces2746CleanUpTest extends ClassLoaderPreMortemCleanUpT
     doTriggerLeak();
 
     new ThreadGroupContextCleanUp().cleanUp(getClassLoaderLeakPreventor());
+  }
+
+  public static class JavaServerFaces2746CombinedCleanup implements ClassLoaderPreMortemCleanUp {
+    @Override
+    public void cleanUp(ClassLoaderLeakPreventor preventor) {
+        new JavaServerFaces2746CleanUp().cleanUp(preventor);
+        new BeanIntrospectorCleanUp().cleanUp(preventor);
+    }
   }
 }

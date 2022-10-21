@@ -2,6 +2,7 @@ package se.jiderhamn.classloader.leak.prevention;
 
 import java.util.Collection;
 import java.util.Timer;
+import java.util.TimerTask;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -21,7 +22,16 @@ public class StopThreadsCleanUp_TimerTest {
    */
   @Test
   public void createTimer() throws IllegalAccessException, NoSuchFieldException {
-    new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
+    Timer timer =new Timer("MyTimer"); // Create new Timer to spawn new TimerThread
+    // Ensure that a task is scheduled against this timer, making sure that scheduled tasks are cancelled by StopThreadsCleanUp.
+    // Not doing so will also cause this test to intermittently fail with JDK17+ with
+    // "ClassLoader has been garbage collected, while test is expected to leak"
+    // as it now uses a new JVM-internal jdk.internal.ref.Cleaner instead of the previously-used finalizer mechanism.
+    // See https://github.com/openjdk/jdk/blob/jdk-17+35/src/java.base/share/classes/java/util/Timer.java
+    timer.schedule(new TimerTask() {
+        @Override
+        public void run() {}
+    },10000);
     Thread.yield(); // Allow the Timer thread to start
   }
   
