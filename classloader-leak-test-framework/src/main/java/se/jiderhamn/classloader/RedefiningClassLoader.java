@@ -55,13 +55,6 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   }
 
   @Override
-  protected void finalize() throws Throwable {
-    System.out.println(this + " is being finalized");
-    
-    // TODO: Report?
-  }
-
-  @Override
   public String toString() {
     return (name != null) ? (this.getClass().getName() + '[' + name + "]@" + Integer.toHexString(System.identityHashCode(this))) :  
         super.toString();
