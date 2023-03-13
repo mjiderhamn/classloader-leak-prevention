@@ -13,9 +13,19 @@ import org.junit.runner.RunWith;
 @RunWith(JUnitClassloaderRunner.class)
 public class JUnitClassloaderRunnerTest {
   
-  @Test(expected = Exception.class) // FileNotFoundException wrapped in RuntimeException 
+  @Test(expected = RuntimeException.class) // FileNotFoundException replaced by RuntimeException
   @Leaks(false)
   public void throwException() throws Exception {
     throw new FileNotFoundException("foo.txt");
+  }
+
+  @Test(expected = RuntimeException.class) // CustomError replaced by RuntimeException
+  @Leaks(false)
+  public void throwAssertionError() {
+    throw new CustomError();
+  }
+
+  public static class CustomError extends Error {
+
   }
 }

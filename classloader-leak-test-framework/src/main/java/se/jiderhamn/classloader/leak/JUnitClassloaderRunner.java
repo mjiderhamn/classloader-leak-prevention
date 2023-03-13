@@ -118,8 +118,9 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         myTestClass = null;
         myMethod = null;
       }
-      catch (Exception e) {
+      catch (Throwable e) {
         e.printStackTrace(System.err); // Print here in case other exception is thrown in finally block
+        // Loose the original throwable as it or its backtrace may itself cause a leak
         throw new RuntimeException(e.getClass().getName() + ": " + e.getMessage());
       }
       finally {
