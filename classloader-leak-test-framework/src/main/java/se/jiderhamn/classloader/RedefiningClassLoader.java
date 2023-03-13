@@ -8,7 +8,8 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   
   /** Override parents default and include  */
   public static final String[] DEFAULT_IGNORED_PACKAGES = {
-          "java.", "javax.", "jdk.", "com.sun.", "sun.", "org.w3c", "org.junit.", "junit."
+          "java.", "javax.", "jdk.", "com.sun.", "sun.", "org.w3c", "org.junit.", "junit.",
+          "com.apple.eawt.", "com.apple.eio.", "com.apple.laf." // Apple OpenJDK
   };
   
   /** Set to non-null to indicate it should be ready for garbage collection */
