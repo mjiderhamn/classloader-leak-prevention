@@ -77,7 +77,12 @@ That is, the test will fail if either there is no leak to begin with, or the lea
 
 NOTE: It is not yet determined whether multiple test cases in the same class works, so you should stick to one single `@Test` method per class for now.
 
-### Maven
+## Debugging
+
+If you want the test framework to log (to stdout) when a class is being loaded, set the `ClassLoaderLeakTestFramework.debug`
+system property to `true` (i.e. `-DClassLoaderLeakTestFramework.debug=true`).
+
+## Maven
 The test framework of the library is available in Maven Central with the following details:
 
 ```xml

@@ -18,6 +18,8 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   
   private final String name;
 
+  private final boolean logRedefinitions;
+
   public RedefiningClassLoader(ClassLoader parent) {
     this(parent, null);
   }
@@ -37,16 +39,20 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   public RedefiningClassLoader(ClassLoader parent, String name, String[] ignoredPackages) {
     super(parent, ignoredPackages);
     this.name = name;
+    this.logRedefinitions = "true".equals(System.getProperty("ClassLoaderLeakTestFramework.debug"));
   }
 
   RedefiningClassLoader(String name, String[] ignoredPackages) {
     super(ignoredPackages);
     this.name = name;
+    this.logRedefinitions = "true".equals(System.getProperty("ClassLoaderLeakTestFramework.debug"));
   }
 
   @Override
   protected JavaClass modifyClass(JavaClass clazz) {
-    System.out.println("Loading " + clazz.getClassName() + " in " + this); // TODO: turn debugging on/off
+    if (logRedefinitions) {
+      System.out.println("Loading " + clazz.getClassName() + " in " + this);
+    }
     return super.modifyClass(clazz);
   }
   
