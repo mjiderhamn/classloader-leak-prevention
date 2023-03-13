@@ -89,7 +89,7 @@ The test framework of the library is available in Maven Central with the followi
 <dependency>
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-test-framework</artifactId>
-  <version>1.1.1</version>
+  <version>1.1.2</version>
 </dependency>
 ```
 
