@@ -10,8 +10,8 @@
   <url>https://github.com/mjiderhamn/classloader-leak-prevention</url>
   
   <scm>
-    <connection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</connection>
-    <developerConnection>scm:git:git@github.com:mjiderhamn/classloader-leak-prevention.git</developerConnection>
+    <connection>scm:git:https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/mjiderhamn/classloader-leak-prevention.git</connection>
+    <developerConnection>scm:git:https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/mjiderhamn/classloader-leak-prevention.git</developerConnection>
     <url>https://github.com/mjiderhamn/classloader-leak-prevention.git</url>
     <tag>HEAD</tag>
   </scm>
