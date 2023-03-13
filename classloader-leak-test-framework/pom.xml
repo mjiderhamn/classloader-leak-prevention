@@ -3,7 +3,7 @@
 
   <groupId>se.jiderhamn</groupId>
   <artifactId>classloader-leak-test-framework</artifactId>
-  <version>1.1.2-SNAPSHOT</version>
+  <version>1.1.3-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>ClassLoader leak test framework</name>
   <description>Test framework to confirm suspected classloader leak, and create heap dumps to track the leaks</description>
