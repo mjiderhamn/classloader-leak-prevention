@@ -5,13 +5,15 @@ import org.apache.bcel.classfile.JavaClass;
 
 /** Classloader that redefines classes even if existing in parent */
 public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
-  
+
+  private static final String DEBUG_SYSTEM_PROPERTY = "ClassLoaderLeakTestFramework.debug";
+
   /** Override parents default and include  */
   public static final String[] DEFAULT_IGNORED_PACKAGES = {
           "java.", "javax.", "jdk.", "com.sun.", "sun.", "org.w3c", "org.junit.", "junit.",
           "com.apple.eawt.", "com.apple.eio.", "com.apple.laf." // Apple OpenJDK
   };
-  
+
   /** Set to non-null to indicate it should be ready for garbage collection */
   @SuppressWarnings({"unused", "FieldCanBeLocal"})
   private ZombieMarker zombieMarker = null;
@@ -39,13 +41,17 @@ public class RedefiningClassLoader extends org.apache.bcel.util.ClassLoader {
   public RedefiningClassLoader(ClassLoader parent, String name, String[] ignoredPackages) {
     super(parent, ignoredPackages);
     this.name = name;
-    this.logRedefinitions = "true".equals(System.getProperty("ClassLoaderLeakTestFramework.debug"));
+    this.logRedefinitions = isDebugLoggingEnabled();
   }
 
   RedefiningClassLoader(String name, String[] ignoredPackages) {
     super(ignoredPackages);
     this.name = name;
-    this.logRedefinitions = "true".equals(System.getProperty("ClassLoaderLeakTestFramework.debug"));
+    this.logRedefinitions = isDebugLoggingEnabled();
+  }
+
+  public static boolean isDebugLoggingEnabled() {
+    return "true".equals(System.getProperty(DEBUG_SYSTEM_PROPERTY));
   }
 
   @Override

@@ -108,8 +108,10 @@ public class JUnitClassloaderRunner extends BlockJUnit4ClassRunner {
         Method myMethod = myClassLoader.loadClass(originalMethod.getDeclaringClass().getName())
             .getDeclaredMethod(originalMethod.getName(), originalMethod.getParameterTypes());
 
-        System.out.println("JUnit used " + getTestClass().getJavaClass().getClassLoader()); // TODO turn debugging on/off
-        System.out.println("SeparateClassLoaderInvokeMethod used " + myTestClass.getJavaClass().getClassLoader()); // TODO turn debugging on/off
+        if (RedefiningClassLoader.isDebugLoggingEnabled()) {
+          System.out.println("JUnit used " + getTestClass().getJavaClass().getClassLoader());
+          System.out.println("SeparateClassLoaderInvokeMethod used " + myTestClass.getJavaClass().getClassLoader());
+        }
 
         // super.evaluate(); =
         new FrameworkMethod(myMethod).invokeExplosively(myTestClass.getOnlyConstructor().newInstance());
